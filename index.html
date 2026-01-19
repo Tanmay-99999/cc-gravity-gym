@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container glass-card">
+            <div class="login-header">
+                <h1>🏋️ GymPro</h1>
+                <p>Management System</p>
+            </div>
+            <div class="login-form">
+                <div class="form-group">
+                    <label>Select Role</label>
+                    <select id="roleSelect" class="form-control">
+                        <option value="admin">Admin</option>
+                        <option value="frontdesk">Front Desk</option>
+                        <option value="trainer">Trainer</option>
+                        <option value="member">Member</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="username" class="form-control" placeholder="Enter username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" class="form-control" placeholder="Enter password">
+                </div>
+                <button id="loginBtn" data-action="login" class="btn btn-primary btn-block">Login</button>
+                <p class="login-hint">Demo credentials — Admin: <strong>Tanmay9999</strong> / <strong>admin123</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="screen">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-card">
+            <div class="sidebar-header">
+                <h2>🏋️ GymPro</h2>
+                <div class="user-info">
+                    <div class="user-avatar" id="userAvatar">A</div>
+                    <div class="user-details">
+                        <div class="user-name" id="userName">Admin User</div>
+                        <div class="user-role" id="userRole">Administrator</div>
+                    </div>
+                </div>
+            </div>
+            <nav class="sidebar-nav" id="sidebarNav">
+                <!-- Navigation will be populated by JS -->
+            </nav>
+            <button id="logoutBtn" data-action="logout" class="btn btn-secondary btn-block logout-btn">Logout</button>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard -->
+            <div id="dashboardView" class="view active">
+                <div class="view-header">
+                    <h2>Dashboard</h2>
+                    <div class="header-actions">
+                        <span class="date-display" id="currentDate"></span>
+                    </div>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="totalMembers">0</div>
+                            <div class="stat-label">Active Members</div>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">💰</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="monthRevenue">$0</div>
+                            <div class="stat-label">Revenue This Month</div>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="dailyCheckins">0</div>
+                            <div class="stat-label">Check-ins Today</div>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="upcomingClasses">0</div>
+                            <div class="stat-label">Classes Today</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card glass-card">
+                        <h3>Attendance Trend (Last 7 Days)</h3>
+                        <canvas id="attendanceChart"></canvas>
+                    </div>
+                    <div class="chart-card glass-card">
+                        <h3>Revenue Breakdown</h3>
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                    <div class="chart-card glass-card">
+                        <h3>Class Fill Rate</h3>
+                        <canvas id="classFillChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Members View -->
+            <div id="membersView" class="view">
+                <div class="view-header">
+                    <h2>Member Management</h2>
+                    <button data-action="showAddMemberModal" class="btn btn-primary">+ Add Member</button>
+                </div>
+                <div class="table-controls">
+                    <input type="text" id="memberSearch" class="form-control" placeholder="Search members..." onkeyup="filterMembers()">
+                    <select id="memberStatusFilter" class="form-control" onchange="filterMembers()">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="expired">Expired</option>
+                        <option value="pending">Pending</option>
+                    </select>
+                </div>
+                <div class="table-container glass-card">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Plan</th>
+                                <th>Status</th>
+                                <th>Expires</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="membersTableBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Plans View -->
+            <div id="plansView" class="view">
+                <div class="view-header">
+                    <h2>Membership Plans</h2>
+                    <button data-action="showAddPlanModal" class="btn btn-primary">+ Create Plan</button>
+                </div>
+                <div class="plans-grid" id="plansGrid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Classes View -->
+            <div id="classesView" class="view">
+                <div class="view-header">
+                    <h2>Class Schedule</h2>
+                    <button data-action="showAddClassModal" class="btn btn-primary">+ Schedule Class</button>
+                </div>
+                <div class="classes-grid" id="classesGrid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Check-in View -->
+            <div id="checkinView" class="view">
+                <div class="view-header">
+                    <h2>Check-In Panel</h2>
+                </div>
+                <div class="checkin-search glass-card">
+                    <input type="text" id="checkinSearch" class="form-control" placeholder="Search by name, ID, or phone..." onkeyup="searchMemberForCheckin()">
+                    <div id="checkinResults" class="checkin-results"></div>
+                </div>
+                <div class="recent-checkins glass-card">
+                    <h3>Recent Check-ins</h3>
+                    <div id="recentCheckinsList"></div>
+                </div>
+            </div>
+
+            <!-- QR Scanner View -->
+            <div id="qrScannerView" class="view">
+                <div class="view-header">
+                    <h2>QR Code Scanner</h2>
+                </div>
+                <div class="scanner-container glass-card">
+                    <div id="qrReader"></div>
+                    <div id="scanResult" class="scan-result"></div>
+                </div>
+            </div>
+
+            <!-- Trainers View -->
+            <div id="trainersView" class="view">
+                <div class="view-header">
+                    <h2>Trainer Management</h2>
+                    <button data-action="showAddTrainerModal" class="btn btn-primary">+ Add Trainer</button>
+                </div>
+                <div class="trainers-grid" id="trainersGrid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Prospects View -->
+            <div id="prospectsView" class="view">
+                <div class="view-header">
+                    <h2>Prospects & Enquiries</h2>
+                    <button data-action="showAddProspectModal" class="btn btn-primary">+ Add Prospect</button>
+                </div>
+                <div class="table-container glass-card">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Phone</th>
+                                <th>Email</th>
+                                <th>Interest</th>
+                                <th>Status</th>
+                                <th>Follow-up</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prospectsTableBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Add Member Modal -->
+    <div id="addMemberModal" class="modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>Add New Member</h3>
+                <span class="close" data-action="closeModal" data-id="addMemberModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Full Name *</label>
+                        <input type="text" id="memberName" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input type="email" id="memberEmail" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="tel" id="memberPhone" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Date of Birth</label>
+                        <input type="date" id="memberDOB" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Gender</label>
+                        <select id="memberGender" class="form-control">
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Emergency Contact</label>
+                        <input type="tel" id="memberEmergency" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <textarea id="memberAddress" class="form-control" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Select Plan *</label>
+                    <select id="memberPlan" class="form-control" required>
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Profile Photo</label>
+                    <input type="file" id="memberPhoto" class="form-control" accept="image/*">
+                    <div id="photoPreview" class="photo-preview"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="addMemberModal" class="btn btn-secondary">Cancel</button>
+                <button data-action="saveMember" class="btn btn-primary">Save & Process Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>Process Payment</h3>
+                <span class="close" data-action="closeModal" data-id="paymentModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="payment-summary">
+                    <h4>Payment Details</h4>
+                    <div class="summary-row">
+                        <span>Member:</span>
+                        <span id="paymentMemberName"></span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Plan:</span>
+                        <span id="paymentPlanName"></span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Duration:</span>
+                        <span id="paymentDuration"></span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Base Amount:</span>
+                        <span id="paymentBaseAmount"></span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Discount:</span>
+                        <span id="paymentDiscount"></span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>Total Amount:</span>
+                        <span id="paymentTotal"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Payment Method *</label>
+                    <select id="paymentMethod" class="form-control">
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="online">Online Transfer</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Transaction ID / Notes</label>
+                    <input type="text" id="paymentNotes" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="paymentModal" class="btn btn-secondary">Cancel</button>
+                <button data-action="confirmPayment" class="btn btn-success">Confirm Payment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Member Details Modal -->
+    <div id="memberDetailsModal" class="modal">
+        <div class="modal-content glass-card large-modal">
+            <div class="modal-header">
+                <h3>Member Details</h3>
+                <span class="close" data-action="closeModal" data-id="memberDetailsModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="member-profile">
+                    <div class="profile-photo-section">
+                        <img id="detailPhoto" src="" alt="Member Photo" class="profile-photo">
+                        <div id="detailQRCode" class="qr-code-display"></div>
+                    </div>
+                    <div class="profile-info-section">
+                        <h3 id="detailName"></h3>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Member ID:</label>
+                                <span id="detailID"></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Email:</label>
+                                <span id="detailEmail"></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Phone:</label>
+                                <span id="detailPhone"></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Date of Birth:</label>
+                                <span id="detailDOB"></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Gender:</label>
+                                <span id="detailGender"></span>
+                            </div>
+                            <div class="info-item">
+                                <label>Emergency Contact:</label>
+                                <span id="detailEmergency"></span>
+                            </div>
+                            <div class="info-item full-width">
+                                <label>Address:</label>
+                                <span id="detailAddress"></span>
+                            </div>
+                        </div>
+                        <div class="membership-info">
+                            <h4>Membership Information</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label>Plan:</label>
+                                    <span id="detailPlan"></span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Status:</label>
+                                    <span id="detailStatus" class="status-badge"></span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Start Date:</label>
+                                    <span id="detailStartDate"></span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Expiry Date:</label>
+                                    <span id="detailExpiry"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="payment-history">
+                    <h4>Payment History</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Plan</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentHistoryBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="memberDetailsModal" class="btn btn-secondary">Close</button>
+                <button data-action="editMember" class="btn btn-primary">Edit Member</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Plan Modal -->
+    <div id="addPlanModal" class="modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3 id="planModalTitle">Create Membership Plan</h3>
+                <span class="close" data-action="closeModal" data-id="addPlanModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Plan Name *</label>
+                    <input type="text" id="planName" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Duration Type *</label>
+                        <select id="planDuration" class="form-control">
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly (3 months)</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Price ($) *</label>
+                        <input type="number" id="planPrice" class="form-control" min="0" step="0.01" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Discount (%)</label>
+                        <input type="number" id="planDiscount" class="form-control" min="0" max="100" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Trial Days</label>
+                        <input type="number" id="planTrial" class="form-control" min="0" value="0">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="planDescription" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Features (one per line)</label>
+                    <textarea id="planFeatures" class="form-control" rows="4" placeholder="Unlimited gym access&#10;Personal training sessions&#10;Nutrition consultation"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="addPlanModal" class="btn btn-secondary">Cancel</button>
+                <button data-action="savePlan" class="btn btn-primary">Save Plan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Class Modal -->
+    <div id="addClassModal" class="modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>Schedule Class</h3>
+                <span class="close" data-action="closeModal" data-id="addClassModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Class Title *</label>
+                    <input type="text" id="classTitle" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date *</label>
+                        <input type="date" id="classDate" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Time *</label>
+                        <input type="time" id="classTime" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Duration (minutes) *</label>
+                        <input type="number" id="classDuration" class="form-control" min="15" value="60" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Capacity *</label>
+                        <input type="number" id="classCapacity" class="form-control" min="1" value="20" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Trainer *</label>
+                    <select id="classTrainer" class="form-control" required>
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="classDescription" class="form-control" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="addClassModal" class="btn btn-secondary">Cancel</button>
+                <button data-action="saveClass" class="btn btn-primary">Schedule Class</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Trainer Modal -->
+    <div id="addTrainerModal" class="modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>Add Trainer</h3>
+                <span class="close" data-action="closeModal" data-id="addTrainerModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="trainerName" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input type="email" id="trainerEmail" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="tel" id="trainerPhone" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Specialization</label>
+                    <input type="text" id="trainerSpecialization" class="form-control" placeholder="e.g., Yoga, CrossFit, Personal Training">
+                </div>
+                <div class="form-group">
+                    <label>Certifications</label>
+                    <textarea id="trainerCertifications" class="form-control" rows="2"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Bio</label>
+                    <textarea id="trainerBio" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Available Days</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" value="Monday"> Monday</label>
+                        <label><input type="checkbox" value="Tuesday"> Tuesday</label>
+                        <label><input type="checkbox" value="Wednesday"> Wednesday</label>
+                        <label><input type="checkbox" value="Thursday"> Thursday</label>
+                        <label><input type="checkbox" value="Friday"> Friday</label>
+                        <label><input type="checkbox" value="Saturday"> Saturday</label>
+                        <label><input type="checkbox" value="Sunday"> Sunday</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="addTrainerModal" class="btn btn-secondary">Cancel</button>
+                <button data-action="saveTrainer" class="btn btn-primary">Save Trainer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Prospect Modal -->
+    <div id="addProspectModal" class="modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>Add Prospect</h3>
+                <span class="close" data-action="closeModal" data-id="addProspectModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" id="prospectName" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="tel" id="prospectPhone" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="prospectEmail" class="form-control">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Interest</label>
+                    <select id="prospectInterest" class="form-control">
+                        <option value="General Fitness">General Fitness</option>
+                        <option value="Weight Loss">Weight Loss</option>
+                        <option value="Muscle Gain">Muscle Gain</option>
+                        <option value="Personal Training">Personal Training</option>
+                        <option value="Group Classes">Group Classes</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Follow-up Date</label>
+                    <input type="date" id="prospectFollowup" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Notes</label>
+                    <textarea id="prospectNotes" class="form-control" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button data-action="closeModal" data-id="addProspectModal" class="btn btn-secondary">Cancel</button>
+                <button data-action="saveProspect" class="btn btn-primary">Save Prospect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script>window.__API_BASE__ = "http://localhost:5000/api";</script>
+    <script type="module" src="js/bootstrap.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/members.js"></script>
+    <script src="js/plans.js"></script>
+    <script src="js/classes.js"></script>
+    <script src="js/trainers.js"></script>
+    <script src="js/prospects.js"></script>
+    <script src="js/payments.js"></script>
+    <script src="js/checkin.js"></script>
+    <script src="js/qrcode.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

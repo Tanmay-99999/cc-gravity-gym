@@ -1,0 +1,342 @@
+// Global variables
+let currentView = 'dashboard';
+
+// Initialize app
+function initializeApp() {
+    buildNavigation && buildNavigation();
+    updateCurrentDate();
+    navigateTo('dashboard');
+
+    // Wire UI buttons and handlers (CSP-safe: no inline handlers required)
+    wireUiButtons();
+
+    // Update date every minute
+    setInterval(updateCurrentDate, 60000);
+}
+
+// Update current date display
+function updateCurrentDate() {
+    const dateDisplay = document.getElementById('currentDate');
+    if (dateDisplay) {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        dateDisplay.textContent = now.toLocaleDateString('en-US', options);
+    }
+}
+
+// Navigation
+function navigateTo(viewId) {
+    // Hide all views
+    document.querySelectorAll('.view').forEach(view => {
+        view.classList.remove('active');
+    });
+
+    // Remove active class from all nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+
+    // Show selected view
+    const view = document.getElementById(viewId + 'View');
+    if (view) {
+        view.classList.add('active');
+        currentView = viewId;
+
+        // Add active class to nav item (loose text match)
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            const normalized = item.textContent.replace(/([A-Z])/g, ' $1').trim().toLowerCase();
+            if (normalized.includes(viewId.toLowerCase())) {
+                item.classList.add('active');
+            }
+        });
+
+        // Load view data
+        loadViewData(viewId);
+    }
+}
+
+// Load data for specific view
+function loadViewData(viewId) {
+    switch(viewId) {
+        case 'dashboard':
+            typeof loadDashboard === 'function' && loadDashboard();
+            break;
+        case 'members':
+            typeof loadMembers === 'function' && loadMembers();
+            break;
+        case 'plans':
+            typeof loadPlans === 'function' && loadPlans();
+            break;
+        case 'classes':
+            typeof loadClasses === 'function' && loadClasses();
+            break;
+        case 'checkin':
+            typeof loadCheckinView === 'function' && loadCheckinView();
+            break;
+        case 'qrScanner':
+            typeof initQRScanner === 'function' && initQRScanner();
+            break;
+        case 'trainers':
+            typeof loadTrainers === 'function' && loadTrainers();
+            break;
+        case 'prospects':
+            typeof loadProspects === 'function' && loadProspects();
+            break;
+    }
+}
+
+// Show/Hide Modals
+function showModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('active');
+    }
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+// Close modal when clicking outside (CSP-safe)
+window.addEventListener('click', function(event) {
+    if (event.target && event.target.classList && event.target.classList.contains('modal')) {
+        event.target.classList.remove('active');
+    }
+});
+
+// Notification system
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <strong>${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
+        <p>${message}</p>
+    `;
+
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        // animate out then remove
+        try {
+            notification.style.animation = 'slideInRight 0.3s ease reverse';
+        } catch (e) { /* ignore */ }
+        setTimeout(() => {
+            if (notification.parentNode) notification.parentNode.removeChild(notification);
+        }, 300);
+    }, 3000);
+}
+
+// Format currency
+function formatCurrency(amount) {
+    if (amount === null || amount === undefined || isNaN(Number(amount))) amount = 0;
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+    }).format(Number(amount));
+}
+
+// Format date
+function formatDate(date) {
+    if (!date) return '-';
+    try {
+        return new Date(date).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    } catch (e) {
+        return '-';
+    }
+}
+
+// Calculate days between dates
+function daysBetween(date1, date2) {
+    const oneDay = 24 * 60 * 60 * 1000;
+    return Math.round(Math.abs((new Date(date1) - new Date(date2)) / oneDay));
+}
+
+// Get membership status
+function getMembershipStatus(expiryDate) {
+    try {
+        const today = new Date();
+        const expiry = new Date(expiryDate);
+
+        if (expiry < today) {
+            return 'expired';
+        } else if (daysBetween(today, expiry) <= 7) {
+            return 'expiring';
+        }
+        return 'active';
+    } catch (e) {
+        return 'unknown';
+    }
+}
+
+// Mobile menu toggle (guarded)
+function toggleMobileMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) sidebar.classList.toggle('mobile-open');
+}
+
+// Add mobile menu button (use eventListener instead of onclick for CSP)
+if (window.innerWidth <= 768) {
+    const menuButton = document.createElement('button');
+    menuButton.className = 'mobile-menu-toggle';
+    menuButton.type = 'button';
+    menuButton.textContent = '☰ Menu';
+    menuButton.addEventListener('click', toggleMobileMenu);
+    document.body.appendChild(menuButton);
+}
+
+/**
+ * wireUiButtons()
+ * Attach event listeners to buttons which might be defined in HTML with inline handlers.
+ * This function is defensive: it checks for element presence and for handler functions
+ * before binding. It also sets up delegated click handlers for edit/delete actions using
+ * data attributes.
+ */
+function wireUiButtons() {
+    // Map of element id -> handler function (if present in global scope)
+    const mapping = {
+        'addPlanBtn': 'showAddPlanModal',
+        'savePlanBtn': 'savePlan',
+        'addTrainerBtn': 'showAddTrainerModal',
+        'saveTrainerBtn': 'saveTrainer',
+        'addMemberBtn': 'showAddMemberModal',
+        'saveMemberBtn': 'saveMember',
+        'addProspectBtn': 'showAddProspectModal',
+        'saveProspectBtn': 'saveProspect',
+        'loginBtn': 'login',
+        'logoutBtn': 'logout'
+    };
+
+    Object.keys(mapping).forEach(id => {
+        const fnName = mapping[id];
+        const el = document.getElementById(id);
+        if (el && typeof window[fnName] === 'function') {
+            el.removeAttribute && el.removeAttribute('onclick'); // in case it exists
+            el.addEventListener('click', window[fnName]);
+        }
+    });
+
+    // Delegated click handler for elements using data-action / data-id attributes
+    document.body.addEventListener('click', function(e) {
+        const btn = e.target.closest && e.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        const id = btn.getAttribute('data-id') || btn.getAttribute('data-plan-id') || btn.getAttribute('data-trainer-id') || btn.getAttribute('data-member-id');
+        // route common actions
+        if (!action) return;
+
+        switch(action) {
+            case 'edit-plan':
+                if (typeof editPlan === 'function') editPlan(id);
+                break;
+            case 'delete-plan':
+                if (typeof deletePlan === 'function') deletePlan(id);
+                break;
+            case 'edit-trainer':
+                if (typeof editTrainer === 'function') editTrainer(id);
+                break;
+            case 'delete-trainer':
+                if (typeof deleteTrainer === 'function') deleteTrainer(id);
+                break;
+            case 'edit-member':
+                if (typeof editMember === 'function') editMember(id);
+                break;
+            case 'delete-member':
+                if (typeof deleteMember === 'function') deleteMember(id);
+                break;
+            case 'open-modal':
+                const target = btn.getAttribute('data-target');
+                if (target) showModal(target);
+                break;
+            case 'close-modal':
+                const closeTarget = btn.getAttribute('data-target');
+                if (closeTarget) closeModal(closeTarget);
+                break;
+            default:
+                // allow other handlers in global scope named like action
+                if (typeof window[action] === 'function') window[action](id);
+                break;
+        }
+    });
+
+    // Delegated handler specifically for plan grid buttons that might not use data-action
+    const plansGrid = document.getElementById('plansGrid');
+    if (plansGrid) {
+        plansGrid.addEventListener('click', (e) => {
+            const el = e.target.closest('button');
+            if (!el) return;
+            const planId = el.getAttribute('data-plan-id') || el.getAttribute('data-id');
+            if (el.classList.contains('btn-danger') && typeof deletePlan === 'function') {
+                deletePlan(planId);
+            } else if (el.classList.contains('btn-primary') && typeof editPlan === 'function') {
+                editPlan(planId);
+            }
+        });
+    }
+
+    // Trainers grid delegation
+    const trainersGrid = document.getElementById('trainersGrid');
+    if (trainersGrid) {
+        trainersGrid.addEventListener('click', (e) => {
+            const el = e.target.closest('button');
+            if (!el) return;
+            const trainerId = el.getAttribute('data-trainer-id') || el.getAttribute('data-id');
+            if (el.classList.contains('btn-danger') && typeof deleteTrainer === 'function') {
+                deleteTrainer(trainerId);
+            } else if (el.classList.contains('btn-primary') && typeof editTrainer === 'function') {
+                editTrainer(trainerId);
+            }
+        });
+    }
+}
+
+/**
+ * Safe keydown wrapper to avoid `toLowerCase` errors.
+ * Some environments may fire keyboard events without `key` defined.
+ */
+function safeKeydownHandler(e) {
+    try {
+        const key = (e && typeof e.key === 'string') ? e.key.toLowerCase() : '';
+        // If there's an existing handler named handleKeydown, call it with normalized key
+        if (typeof window.handleKeydown === 'function') {
+            // pass the original event but ensure code uses key variable or check inside
+            window.handleKeydown(e, key);
+        }
+    } catch (err) {
+        // swallow errors so one bad handler doesn't break everything
+        console.warn('safeKeydownHandler error', err);
+    }
+}
+
+// Attach safe keydown at capture phase to protect other code
+document.addEventListener('keydown', safeKeydownHandler, true);
+
+// Expose small helper that other modules can use to attach handlers in a CSP-safe way
+function attachClickById(id, fn) {
+    const el = document.getElementById(id);
+    if (el && typeof fn === 'function') {
+        el.removeAttribute && el.removeAttribute('onclick');
+        el.addEventListener('click', fn);
+    }
+}
+
+// Ensure wiring happens after DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            // call existing initializeApp if not already called elsewhere (e.g., after login)
+            if (typeof initializeApp === 'function') initializeApp();
+        } catch (e) { console.error(e); }
+    });
+} else {
+    try {
+        if (typeof initializeApp === 'function') initializeApp();
+    } catch (e) { console.error(e); }
+}
