@@ -1,17 +1,38 @@
 // QR Code Management
 
 let html5QrCode = null;
+let _scannerInitializing = false;
 
 // Initialize QR Scanner
-function initQRScanner() {
+async function initQRScanner() {
     const qrReader = document.getElementById('qrReader');
-    
+
     if (!qrReader) return;
 
-    // Clear previous instance
-    if (html5QrCode) {
-        html5QrCode.stop().catch(err => console.error(err));
+    // Prevent multiple simultaneous initializations
+    if (_scannerInitializing) {
+        console.log('Scanner initialization already in progress');
+        return;
     }
+    _scannerInitializing = true;
+
+    // Stop and clear previous instance if exists
+    if (html5QrCode) {
+        if (html5QrCode.isScanning) {
+            try {
+                await html5QrCode.stop();
+            } catch (err) {
+                console.warn('Stop error (ignored):', err);
+            }
+        }
+        try {
+            html5QrCode.clear();
+        } catch (e) { /* ignore */ }
+        html5QrCode = null;
+    }
+
+    // Clear the container to remove any orphaned video elements
+    qrReader.innerHTML = '';
 
     // Initialize scanner
     html5QrCode = new Html5Qrcode("qrReader");
@@ -26,7 +47,10 @@ function initQRScanner() {
         config,
         onScanSuccess,
         onScanError
-    ).catch(err => {
+    ).then(() => {
+        _scannerInitializing = false;
+    }).catch(err => {
+        _scannerInitializing = false;
         console.error('Scanner error:', err);
         document.getElementById('scanResult').innerHTML = `
             <div class="scan-error">
@@ -39,9 +63,9 @@ function initQRScanner() {
 
 // On successful scan
 function onScanSuccess(decodedText, decodedResult) {
-    // Stop scanning
-    if (html5QrCode) {
-        html5QrCode.stop();
+    // Stop scanning (check if actually running first)
+    if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(err => console.warn('Stop error:', err));
     }
 
     // Process the scanned member ID
@@ -56,7 +80,8 @@ function onScanError(errorMessage) {
 // Process scanned QR code
 function processMemberQRCode(memberId) {
     const members = Storage.get(Storage.KEYS.MEMBERS) || [];
-    const member = members.find(m => m.id === memberId);
+    // Use String comparison since QR code stores string and DB has number
+    const member = members.find(m => String(m.id) === String(memberId));
 
     const resultContainer = document.getElementById('scanResult');
 
@@ -77,7 +102,7 @@ function processMemberQRCode(memberId) {
     if (canCheckin) {
         // Perform automatic check-in
         performCheckin(memberId);
-        
+
         resultContainer.innerHTML = `
             <div class="scan-success">
                 <h3>✅ Check-in Successful</h3>
@@ -113,9 +138,9 @@ function generateMemberQRCode(memberId, containerId) {
     if (!container) return;
 
     container.innerHTML = '';
-    
+
     new QRCode(container, {
-        text: memberId,
+        text: String(memberId),
         width: 200,
         height: 200,
         colorDark: "#000000",

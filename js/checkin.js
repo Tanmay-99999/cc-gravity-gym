@@ -2,28 +2,29 @@
 
 let checkinSearchTimeout = null;
 
-// Load check-in view
-function loadCheckinView() {
+// Load check-in view (async to refresh data)
+async function loadCheckinView() {
+    await Storage.refresh(Storage.KEYS.CHECKINS);
     loadRecentCheckins();
 }
 
 // Search member for check-in
 function searchMemberForCheckin() {
     clearTimeout(checkinSearchTimeout);
-    
+
     checkinSearchTimeout = setTimeout(() => {
         const searchTerm = document.getElementById('checkinSearch').value.toLowerCase();
-        
+
         if (searchTerm.length < 2) {
             document.getElementById('checkinResults').innerHTML = '';
             return;
         }
 
         const members = Storage.get(Storage.KEYS.MEMBERS) || [];
-        const filtered = members.filter(member => 
+        const filtered = members.filter(member =>
             member.name.toLowerCase().includes(searchTerm) ||
-            member.id.toLowerCase().includes(searchTerm) ||
-            member.phone.includes(searchTerm)
+            String(member.id).toLowerCase().includes(searchTerm) ||
+            (member.phone || '').includes(searchTerm)
         );
 
         displayCheckinResults(filtered);
@@ -33,7 +34,7 @@ function searchMemberForCheckin() {
 // Display check-in results
 function displayCheckinResults(members) {
     const resultsContainer = document.getElementById('checkinResults');
-    
+
     if (members.length === 0) {
         resultsContainer.innerHTML = '<p class="text-muted text-center">No members found</p>';
         return;
@@ -42,7 +43,7 @@ function displayCheckinResults(members) {
     resultsContainer.innerHTML = members.map(member => {
         const status = getMembershipStatus(member.expiryDate);
         const canCheckin = status === 'active';
-        
+
         return `
             <div class="checkin-item">
                 <div class="checkin-member-info">
@@ -64,9 +65,12 @@ function displayCheckinResults(members) {
 }
 
 // Perform check-in
-function performCheckin(memberId) {
+async function performCheckin(memberId) {
+    // Refresh members cache first
+    await Storage.refresh(Storage.KEYS.MEMBERS);
     const members = Storage.get(Storage.KEYS.MEMBERS) || [];
-    const member = members.find(m => m.id === memberId);
+    // Use String comparison for ID matching
+    const member = members.find(m => String(m.id) === String(memberId));
 
     if (!member) {
         showNotification('Member not found', 'error');
@@ -80,10 +84,11 @@ function performCheckin(memberId) {
     }
 
     // Check if already checked in today
+    await Storage.refresh(Storage.KEYS.CHECKINS);
     const checkins = Storage.get(Storage.KEYS.CHECKINS) || [];
     const today = new Date().toDateString();
-    const alreadyCheckedIn = checkins.some(c => 
-        c.memberId === memberId && 
+    const alreadyCheckedIn = checkins.some(c =>
+        String(c.memberId) === String(memberId) &&
         new Date(c.timestamp).toDateString() === today
     );
 
@@ -101,18 +106,18 @@ function performCheckin(memberId) {
         checkedInBy: currentUser.name
     };
 
-    // create checkin on server
-    Storage.create(Storage.KEYS.CHECKINS, checkin).then(created => {
-        if (created) {
-            showNotification(`${member.name} checked in successfully!`, 'success');
-        } else {
-            showNotification('Check-in failed', 'error');
-        }
-    });
-    
+    // create checkin on server and await before refreshing
+    const created = await Storage.create(Storage.KEYS.CHECKINS, checkin);
+    if (created) {
+        showNotification(`${member.name} checked in successfully!`, 'success');
+    } else {
+        showNotification('Check-in failed', 'error');
+    }
+
     // Clear search and reload
     document.getElementById('checkinSearch').value = '';
     document.getElementById('checkinResults').innerHTML = '';
+    await Storage.refresh(Storage.KEYS.CHECKINS);
     loadRecentCheckins();
 }
 
@@ -120,9 +125,9 @@ function performCheckin(memberId) {
 function loadRecentCheckins() {
     const checkins = Storage.get(Storage.KEYS.CHECKINS) || [];
     const today = new Date().toDateString();
-    
+
     // Filter today's check-ins
-    const todayCheckins = checkins.filter(c => 
+    const todayCheckins = checkins.filter(c =>
         new Date(c.timestamp).toDateString() === today
     );
 
@@ -130,7 +135,7 @@ function loadRecentCheckins() {
     todayCheckins.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     const container = document.getElementById('recentCheckinsList');
-    
+
     if (todayCheckins.length === 0) {
         container.innerHTML = '<p class="text-muted text-center">No check-ins today</p>';
         return;
@@ -156,8 +161,8 @@ function loadRecentCheckins() {
 function getTodayCheckins() {
     const checkins = Storage.get(Storage.KEYS.CHECKINS) || [];
     const today = new Date().toDateString();
-    
-    return checkins.filter(c => 
+
+    return checkins.filter(c =>
         new Date(c.timestamp).toDateString() === today
     ).length;
 }
@@ -172,8 +177,8 @@ function getWeeklyCheckins() {
         const date = new Date();
         date.setDate(date.getDate() - i);
         const dateString = date.toDateString();
-        
-        const count = checkins.filter(c => 
+
+        const count = checkins.filter(c =>
             new Date(c.timestamp).toDateString() === dateString
         ).length;
 

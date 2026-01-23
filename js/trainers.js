@@ -1,7 +1,11 @@
 // Trainer Management
 
-// Load trainers
-function loadTrainers() {
+// Flag to prevent duplicate saves
+let _savingTrainer = false;
+
+// Load trainers (async to fetch fresh data)
+async function loadTrainers() {
+    await Storage.refresh(Storage.KEYS.TRAINERS);
     const trainers = Storage.get(Storage.KEYS.TRAINERS) || [];
     const trainersGrid = document.getElementById('trainersGrid');
 
@@ -18,7 +22,7 @@ function loadTrainers() {
 
     trainersGrid.innerHTML = trainers.map(trainer => {
         const availability = Array.isArray(trainer.availability) ? trainer.availability : [];
-        
+
         // Get assigned classes
         const classes = Storage.get(Storage.KEYS.CLASSES) || [];
         const assignedClasses = classes.filter(c => c.trainerId === trainer.id);
@@ -57,6 +61,9 @@ function loadTrainers() {
 
 // Show add trainer modal
 function showAddTrainerModal() {
+    // Reset save guard in case it was stuck
+    _savingTrainer = false;
+
     // Only the default admin can create trainers
     if (!isDefaultAdmin()) {
         showNotification('Only the default admin (Tanmay9999) can add trainers', 'error');
@@ -69,7 +76,7 @@ function showAddTrainerModal() {
     document.getElementById('trainerSpecialization').value = '';
     document.getElementById('trainerCertifications').value = '';
     document.getElementById('trainerBio').value = '';
-    
+
     // Clear all checkboxes
     document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(cb => {
         cb.checked = false;
@@ -99,6 +106,13 @@ function saveTrainer() {
         showNotification('Please fill in all required fields', 'error');
         return;
     }
+
+    // Prevent duplicate saves
+    if (_savingTrainer) {
+        console.log('Trainer save in progress, ignoring');
+        return;
+    }
+    _savingTrainer = true;
 
     const trainers = Storage.get(Storage.KEYS.TRAINERS) || [];
     const editId = document.getElementById('addTrainerModal').getAttribute('data-edit-id');
@@ -133,9 +147,21 @@ function saveTrainer() {
         };
         // create trainer on server
         Storage.create(Storage.KEYS.TRAINERS, trainer).then(created => {
-            if (!created) showNotification('Failed to add trainer', 'error');
+            _savingTrainer = false;
+            if (!created) {
+                showNotification('Failed to add trainer', 'error');
+            } else {
+                closeModal('addTrainerModal');
+                loadTrainers();
+                showNotification('Trainer added successfully', 'success');
+            }
+        }).catch(err => {
+            _savingTrainer = false;
+            console.error('Save trainer failed', err);
         });
+        return; // Exit early, async handling above
     }
+    _savingTrainer = false;
     closeModal('addTrainerModal');
     loadTrainers();
     showNotification(editId ? 'Trainer updated successfully' : 'Trainer added successfully', 'success');
@@ -144,7 +170,7 @@ function saveTrainer() {
 // Edit trainer
 function editTrainer(trainerId) {
     const trainers = Storage.get(Storage.KEYS.TRAINERS) || [];
-    const trainer = trainers.find(t => t.id === trainerId);
+    const trainer = trainers.find(t => String(t.id) === String(trainerId));
 
     if (!trainer) {
         showNotification('Trainer not found', 'error');
@@ -185,14 +211,14 @@ function deleteTrainer(trainerId) {
         return;
     }
 
-        // delete on server
+    // delete on server
     Storage.delete(Storage.KEYS.TRAINERS, trainerId).then(ok => {
         if (ok) {
-    if (typeof loadTrainers === 'function') { loadTrainers(); }
+            if (typeof loadTrainers === 'function') { loadTrainers(); }
             showNotification('Deleted successfully', 'success');
         } else {
             showNotification('Deletion failed', 'error');
         }
-    });loadTrainers();
+    }); loadTrainers();
     showNotification('Trainer deleted successfully', 'success');
 }

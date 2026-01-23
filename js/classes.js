@@ -1,7 +1,11 @@
 // Class Management
 
-// Load classes
-function loadClasses() {
+// Flag to prevent duplicate saves
+let _savingClass = false;
+
+// Load classes (async to fetch fresh data)
+async function loadClasses() {
+    await Storage.refresh(Storage.KEYS.CLASSES);
     const classes = Storage.get(Storage.KEYS.CLASSES) || [];
     const classesGrid = document.getElementById('classesGrid');
 
@@ -28,7 +32,7 @@ function loadClasses() {
         const isPast = new Date(cls.date + ' ' + cls.time) < new Date();
 
         // Check if current user has booked
-        const userBooked = currentUser.role === 'member' && 
+        const userBooked = currentUser.role === 'member' &&
             classBookings.some(b => b.memberId === currentUser.username);
 
         return `
@@ -53,19 +57,19 @@ function loadClasses() {
                     <span class="capacity-text">${bookedCount}/${cls.capacity}</span>
                 </div>
                 <div class="class-actions">
-                    ${!isPast && currentUser.role === 'member' ? 
-                        (userBooked ? 
-                            `<button class="btn btn-danger btn-sm" data-action="cancelBooking" data-id="${cls.id}">Cancel Booking</button>` :
-                            `<button class="btn btn-primary btn-sm" data-action="bookClass" data-id="${cls.id}" ${isFull ? 'disabled' : ''}>
+                    ${!isPast && currentUser.role === 'member' ?
+                (userBooked ?
+                    `<button class="btn btn-danger btn-sm" data-action="cancelBooking" data-id="${cls.id}">Cancel Booking</button>` :
+                    `<button class="btn btn-primary btn-sm" data-action="bookClass" data-id="${cls.id}" ${isFull ? 'disabled' : ''}>
                                 ${isFull ? 'Join Waitlist' : 'Book Now'}
                             </button>`
-                        ) : ''
-                    }
-                    ${hasPermission('all') || hasPermission('manage_own_classes') ? 
-                        `<button class="btn btn-secondary btn-sm" data-action="viewClassDetails" data-id="${cls.id}">View Details</button>
-                         <button class="btn btn-danger btn-sm" data-action="deleteClass" data-id="${cls.id}">Delete</button>` : 
-                        ''
-                    }
+                ) : ''
+            }
+                    ${hasPermission('all') || hasPermission('manage_own_classes') ?
+                `<button class="btn btn-secondary btn-sm" data-action="viewClassDetails" data-id="${cls.id}">View Details</button>
+                         <button class="btn btn-danger btn-sm" data-action="deleteClass" data-id="${cls.id}">Delete</button>` :
+                ''
+            }
                 </div>
             </div>
         `;
@@ -83,6 +87,9 @@ function formatTime(time) {
 
 // Show add class modal
 function showAddClassModal() {
+    // Reset save guard in case it was stuck
+    _savingClass = false;
+
     // Only the default admin can schedule classes
     if (!isDefaultAdmin()) {
         showNotification('Only the default admin (Tanmay9999) can schedule classes', 'error');
@@ -91,7 +98,7 @@ function showAddClassModal() {
     // Load trainers into select
     const trainers = Storage.get(Storage.KEYS.TRAINERS) || [];
     const trainerSelect = document.getElementById('classTrainer');
-    trainerSelect.innerHTML = trainers.map(trainer => 
+    trainerSelect.innerHTML = trainers.map(trainer =>
         `<option value="${trainer.id}">${trainer.name} - ${trainer.specialization}</option>`
     ).join('');
 
@@ -121,10 +128,19 @@ function saveClass() {
         return;
     }
 
+    // Prevent duplicate saves
+    if (_savingClass) {
+        console.log('Class save in progress, ignoring');
+        return;
+    }
+    _savingClass = true;
+
     const trainers = Storage.get(Storage.KEYS.TRAINERS) || [];
-    const trainer = trainers.find(t => t.id === trainerId);
+    // Use String comparison for ID matching
+    const trainer = trainers.find(t => String(t.id) === String(trainerId));
 
     if (!trainer) {
+        _savingClass = false; // Reset flag before returning
         showNotification('Invalid trainer selected', 'error');
         return;
     }
@@ -143,17 +159,25 @@ function saveClass() {
     };
 
     // Create CLASSES on server
-        Storage.create(Storage.KEYS.CLASSES, classObj).then(created => { if(!created) console.warn('Create failed for CLASSES'); });
-
-    closeModal('addClassModal');
-    loadClasses();
-    showNotification('Class scheduled successfully', 'success');
+    Storage.create(Storage.KEYS.CLASSES, classObj).then(created => {
+        _savingClass = false;
+        if (created) {
+            closeModal('addClassModal');
+            loadClasses();
+            showNotification('Class scheduled successfully', 'success');
+        } else {
+            showNotification('Failed to schedule class', 'error');
+        }
+    }).catch(err => {
+        _savingClass = false;
+        console.error('Save class failed', err);
+    });
 }
 
 // Book class
 function bookClass(classId) {
     const classes = Storage.get(Storage.KEYS.CLASSES) || [];
-    const classObj = classes.find(c => c.id === classId);
+    const classObj = classes.find(c => String(c.id) === String(classId));
 
     if (!classObj) {
         showNotification('Class not found', 'error');
@@ -164,8 +188,8 @@ function bookClass(classId) {
     const classBookings = bookings.filter(b => b.classId === classId);
 
     // Check if already booked
-    const alreadyBooked = bookings.some(b => 
-        b.classId === classId && b.memberId === currentUser.username
+    const alreadyBooked = bookings.some(b =>
+        String(b.classId) === String(classId) && b.memberId === currentUser.username
     );
 
     if (alreadyBooked) {
@@ -218,12 +242,12 @@ function cancelBooking(classId) {
     }
 
     const bookings = Storage.get(Storage.KEYS.BOOKINGS) || [];
-    const filtered = bookings.filter(b => 
-        !(b.classId === classId && b.memberId === currentUser.username)
+    const filtered = bookings.filter(b =>
+        !(String(b.classId) === String(classId) && b.memberId === currentUser.username)
     );
 
     // Check if there are waitlisted bookings
-    const classBookings = filtered.filter(b => b.classId === classId);
+    const classBookings = filtered.filter(b => String(b.classId) === String(classId));
     const waitlisted = classBookings.filter(b => b.status === 'waitlist');
 
     // Promote first waitlisted booking if exists
@@ -245,9 +269,9 @@ function cancelBooking(classId) {
 // View class details
 function viewClassDetails(classId) {
     const classes = Storage.get(Storage.KEYS.CLASSES) || [];
-    const classObj = classes.find(c => c.id === classId);
+    const classObj = classes.find(c => String(c.id) === String(classId));
     const bookings = Storage.get(Storage.KEYS.BOOKINGS) || [];
-    const classBookings = bookings.filter(b => b.classId === classId);
+    const classBookings = bookings.filter(b => String(b.classId) === String(classId));
 
     if (!classObj) {
         showNotification('Class not found', 'error');
@@ -278,17 +302,17 @@ function deleteClass(classId) {
         return;
     }
 
-        // delete on server
+    // delete on server
     Storage.delete(Storage.KEYS.CLASSES, classId).then(ok => {
         if (ok) {
-    if (typeof loadClasses === 'function') { loadClasses(); }
+            if (typeof loadClasses === 'function') { loadClasses(); }
             showNotification('Deleted successfully', 'success');
         } else {
             showNotification('Deletion failed', 'error');
         }
     });// Remove all bookings for this class
     const bookings = Storage.get(Storage.KEYS.BOOKINGS) || [];
-    const filteredBookings = bookings.filter(b => b.classId !== classId);
+    const filteredBookings = bookings.filter(b => String(b.classId) !== String(classId));
     Storage.set(Storage.KEYS.BOOKINGS, filteredBookings);
 
     loadClasses();

@@ -30,36 +30,50 @@ const Storage = {
         return this.cache[key] || [];
     },
 
+    // Fetch latest from server and update cache (for fresh reads)
+    async refresh(key) {
+        try {
+            const res = await fetch(`${API_BASE}/${encodeURIComponent(key)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && Array.isArray(data.items)) {
+                    this.cache[key] = data.items;
+                }
+            }
+        } catch (e) { console.error('refresh failed', e); }
+        return this.cache[key] || [];
+    },
+
     // Replace full collection in-memory and persist to backend (full replace)
     // This function updates DB via POST /api/:key/full
     async persistFullToServer(key) {
         try {
             try {
-            const res = await fetch(`${API_BASE}/${encodeURIComponent(key)}/full`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items: this.cache[key] || [] })
-            });
-            const data = await res.json();
-            if (data && Array.isArray(data.items)) {
-                // update cache with server-assigned ids and normalized items
-                this.cache[key] = data.items.map(it => Object.assign({}, it));
-                // call common reloaders if available so UI updates after server sync
-                try {
-                    if (key === 'gym_members' && typeof loadMembers === 'function') loadMembers();
-                    if (key === 'gym_plans' && typeof loadPlans === 'function') loadPlans();
-                    if (key === 'gym_trainers' && typeof loadTrainers === 'function') loadTrainers();
-                    if (key === 'gym_classes' && typeof loadClasses === 'function') loadClasses();
-                    if (key === 'gym_users' && typeof loadAdmins === 'function') loadAdmins && loadAdmins();
-                    if (typeof refreshDashboard === 'function') refreshDashboard();
-                } catch(e) {
-                    console.warn('Post-sync UI refresh failed for', key, e);
-                }
+                const res = await fetch(`${API_BASE}/${encodeURIComponent(key)}/full`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: this.cache[key] || [] })
+                });
+                const data = await res.json();
+                if (data && Array.isArray(data.items)) {
+                    // update cache with server-assigned ids and normalized items
+                    this.cache[key] = data.items.map(it => Object.assign({}, it));
+                    // call common reloaders if available so UI updates after server sync
+                    try {
+                        if (key === 'gym_members' && typeof loadMembers === 'function') loadMembers();
+                        if (key === 'gym_plans' && typeof loadPlans === 'function') loadPlans();
+                        if (key === 'gym_trainers' && typeof loadTrainers === 'function') loadTrainers();
+                        if (key === 'gym_classes' && typeof loadClasses === 'function') loadClasses();
+                        if (key === 'gym_users' && typeof loadAdmins === 'function') loadAdmins && loadAdmins();
+                        if (typeof refreshDashboard === 'function') refreshDashboard();
+                    } catch (e) {
+                        console.warn('Post-sync UI refresh failed for', key, e);
+                    }
 
+                }
+            } catch (e) {
+                console.error('Failed to persist full collection to server for', key, e);
             }
-        } catch (e) {
-            console.error('Failed to persist full collection to server for', key, e);
-        }
         } catch (e) {
             console.error('Failed to persist full collection to server for', key, e);
         }

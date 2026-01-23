@@ -58,7 +58,7 @@ function navigateTo(viewId) {
 
 // Load data for specific view
 function loadViewData(viewId) {
-    switch (viewId) {
+    switch(viewId) {
         case 'dashboard':
             typeof loadDashboard === 'function' && loadDashboard();
             break;
@@ -102,7 +102,7 @@ function closeModal(modalId) {
 }
 
 // Close modal when clicking outside (CSP-safe)
-window.addEventListener('click', function (event) {
+window.addEventListener('click', function(event) {
     if (event.target && event.target.classList && event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
     }
@@ -133,9 +133,9 @@ function showNotification(message, type = 'info') {
 // Format currency
 function formatCurrency(amount) {
     if (amount === null || amount === undefined || isNaN(Number(amount))) amount = 0;
-    return new Intl.NumberFormat('en-IN', {
+    return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'INR'
+        currency: 'USD'
     }).format(Number(amount));
 }
 
@@ -219,13 +219,12 @@ function wireUiButtons() {
         const el = document.getElementById(id);
         if (el && typeof window[fnName] === 'function') {
             el.removeAttribute && el.removeAttribute('onclick'); // in case it exists
-            // Use onclick assignment to ensure single handler prevents duplicates from re-wiring
-            el.onclick = window[fnName];
+            el.addEventListener('click', window[fnName]);
         }
     });
 
     // Delegated click handler for elements using data-action / data-id attributes
-    document.body.addEventListener('click', function (e) {
+    document.body.addEventListener('click', function(e) {
         const btn = e.target.closest && e.target.closest('[data-action]');
         if (!btn) return;
         const action = btn.getAttribute('data-action');
@@ -233,7 +232,7 @@ function wireUiButtons() {
         // route common actions
         if (!action) return;
 
-        switch (action) {
+        switch(action) {
             case 'edit-plan':
                 if (typeof editPlan === 'function') editPlan(id);
                 break;
@@ -329,18 +328,15 @@ function attachClickById(id, fn) {
 }
 
 // Ensure wiring happens after DOM ready
-// Ensure wiring happens after DOM ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         try {
-            // Do NOT auto-initialize the full app on page load. Initialization should occur after
-            // a successful login or explicit checkAuth(), to avoid showing the main UI to
-            // unauthenticated users. We still wire UI buttons so login/logout work.
-            if (typeof wireUiButtons === 'function') wireUiButtons();
+            // call existing initializeApp if not already called elsewhere (e.g., after login)
+            if (typeof initializeApp === 'function') initializeApp();
         } catch (e) { console.error(e); }
     });
 } else {
     try {
-        if (typeof wireUiButtons === 'function') wireUiButtons();
+        if (typeof initializeApp === 'function') initializeApp();
     } catch (e) { console.error(e); }
 }

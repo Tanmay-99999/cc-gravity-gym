@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 require('dotenv').config();
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -22,34 +23,134 @@ function ensureFileStorage() {
 function readStorage() {
   ensureFileStorage();
   try {
-    return JSON.parse(fs.readFileSync(dataFile,'utf8')||'{}');
-  } catch(e) { return {}; }
+    return JSON.parse(fs.readFileSync(dataFile, 'utf8') || '{}');
+  } catch (e) { return {}; }
 }
 
 function writeStorage(obj) {
   ensureFileStorage();
-  fs.writeFileSync(dataFile, JSON.stringify(obj, null, 2),'utf8');
+  fs.writeFileSync(dataFile, JSON.stringify(obj, null, 2), 'utf8');
 }
+
+let pool = null;
 
 async function getItemsFromStore(key) {
   if (pool) {
+    if (key === 'gym_members') {
+      const [rows] = await pool.query('SELECT * FROM members ORDER BY id DESC');
+      return rows.map(r => {
+        const extra = r.extra || {}; // mysql2 auto-parses JSON
+        return Object.assign({}, extra, {
+          id: r.id,
+          name: r.name,
+          email: r.email,
+          phone: r.phone,
+          planId: r.plan_id,
+          startDate: r.joined_at, // map joined_at back to startDate
+          // Ensure these don't get overwritten by extra if they exist there matching the DB columns
+        });
+      });
+    } else if (key === 'gym_plans') {
+      const [rows] = await pool.query('SELECT * FROM plans ORDER BY id ASC');
+      return rows.map(r => Object.assign({}, r, {
+        features: r.features || []
+      }));
+    } else if (key === 'gym_trainers') {
+      const [rows] = await pool.query('SELECT * FROM trainers ORDER BY id ASC');
+      return rows.map(r => Object.assign({}, r, {
+        availability: r.availability || {}
+      }));
+    } else if (key === 'gym_classes') {
+      const [rows] = await pool.query(
+        `SELECT c.*, t.name as trainerName 
+         FROM classes c 
+         LEFT JOIN trainers t ON c.trainer_id = t.id 
+         ORDER BY JSON_UNQUOTE(JSON_EXTRACT(c.schedule, '$.date')) ASC, 
+                  JSON_UNQUOTE(JSON_EXTRACT(c.schedule, '$.time')) ASC`
+      );
+      // Flatten/map checks
+      return rows.map(r => {
+        const schedule = r.schedule || {};
+        return Object.assign({}, r, {
+          trainerId: r.trainer_id, // Map DB column to CamelCase expectation
+          date: schedule.date,
+          time: schedule.time,
+          duration: schedule.duration
+        });
+      });
+    } else if (key === 'gym_prospects') {
+      const [rows] = await pool.query('SELECT * FROM prospects ORDER BY created_at DESC');
+      return rows;
+    } else if (key === 'gym_users') {
+      const [rows] = await pool.query('SELECT id, username, role, name, email, created_at FROM users');
+      return rows;
+    }
+
+    // Fallback for unknown keys (e.g. checkins, payments if not yet relationalized or legacy)
     const [rows] = await pool.query('SELECT id, data FROM items WHERE `key` = ? ORDER BY id ASC', [key]);
     return rows.map(r => Object.assign({ id: r.id }, parseJSONSafe(r.data)));
   } else {
     const store = readStorage();
-    return (store[key]||[]).map((it,idx) => Object.assign({ id: it.id || (idx+1) }, it));
+    return (store[key] || []).map((it, idx) => Object.assign({ id: it.id || (idx + 1) }, it));
   }
 }
 
 async function createItemInStore(key, item) {
   if (pool) {
+    if (key === 'gym_members') {
+      const planId = item.planId || null;
+      // Extract main fields, put rest in extra
+      const { name, email, phone, startDate, ...rest } = item;
+      // We explicitly map item.startDate -> joined_at and ensure it is YYYY-MM-DD
+      const joinedAt = startDate ? new Date(startDate).toISOString().slice(0, 10) : null;
+      const extra = JSON.stringify(rest);
+      console.log('Creating member:', name, joinedAt); // Debug log
+      const [res] = await pool.query(
+        'INSERT INTO members (name, email, phone, plan_id, joined_at, extra, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+        [name, email, phone, planId, joinedAt, extra]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    } else if (key === 'gym_plans') {
+      const { name, duration, price, discount, trial, description, features } = item;
+      const [res] = await pool.query(
+        'INSERT INTO plans (name, duration, price, discount, trial, description, features, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+        [name, duration, price, discount, trial, description, JSON.stringify(features)]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    } else if (key === 'gym_trainers') {
+      const { name, email, phone, specialization, certifications, bio, availability } = item;
+      const [res] = await pool.query(
+        'INSERT INTO trainers (name, email, phone, specialization, certifications, bio, availability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+        [name, email, phone, specialization, certifications, bio, JSON.stringify(availability)]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    } else if (key === 'gym_classes') {
+      const { title, trainerId, date, time, duration, capacity, description, trainerName } = item;
+      // Store date, time, duration in schedule JSON column
+      const schedule = { date, time, duration };
+
+      // We need to fetch trainer_id if only trainerName is present, or rely on trainerId
+      const [res] = await pool.query(
+        'INSERT INTO classes (title, trainer_id, schedule, capacity, created_at) VALUES (?, ?, ?, ?, NOW())',
+        [title, trainerId || null, JSON.stringify(schedule), capacity]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    } else if (key === 'gym_prospects') {
+      const { name, email, phone, notes } = item;
+      const [res] = await pool.query(
+        'INSERT INTO prospects (name, email, phone, notes, created_at) VALUES (?, ?, ?, ?, NOW())',
+        [name, email, phone, notes]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    }
+
     const [result] = await pool.query('INSERT INTO items (`key`, data) VALUES (?, ?)', [key, JSON.stringify(item)]);
     return Object.assign({ id: result.insertId }, item);
   } else {
     const store = readStorage();
-    store[key]=store[key]||[];
-    const maxId = store[key].reduce((m,i)=>Math.max(m,i.id||0),0);
-    const id = maxId+1;
+    store[key] = store[key] || [];
+    const maxId = store[key].reduce((m, i) => Math.max(m, i.id || 0), 0);
+    const id = maxId + 1;
     const toStore = Object.assign({ id }, item);
     store[key].push(toStore);
     writeStorage(store);
@@ -57,30 +158,76 @@ async function createItemInStore(key, item) {
   }
 }
 
-async function updateItemInStore(key,id,item) {
+async function updateItemInStore(key, id, item) {
   if (pool) {
+    if (key === 'gym_members') {
+      const planId = item.planId || null;
+      const { name, email, phone, startDate, ...rest } = item;
+      const joinedAt = startDate ? new Date(startDate).toISOString().slice(0, 10) : null;
+      const extra = JSON.stringify(rest);
+      const [res] = await pool.query(
+        'UPDATE members SET name=?, email=?, phone=?, plan_id=?, joined_at=?, extra=? WHERE id=?',
+        [name, email, phone, planId, joinedAt, extra, id]
+      );
+      return res.affectedRows > 0;
+    } else if (key === 'gym_plans') {
+      const { name, duration, price, discount, trial, description, features } = item;
+      const [res] = await pool.query(
+        'UPDATE plans SET name=?, duration=?, price=?, discount=?, trial=?, description=?, features=? WHERE id=?',
+        [name, duration, price, discount, trial, description, JSON.stringify(features), id]
+      );
+      return res.affectedRows > 0;
+    } else if (key === 'gym_trainers') {
+      const { name, email, phone, specialization, certifications, bio, availability } = item;
+      const [res] = await pool.query(
+        'UPDATE trainers SET name=?, email=?, phone=?, specialization=?, certifications=?, bio=?, availability=? WHERE id=?',
+        [name, email, phone, specialization, certifications, bio, JSON.stringify(availability), id]
+      );
+      return res.affectedRows > 0;
+    } else if (key === 'gym_classes') {
+      const { title, trainerId, date, time, duration, capacity } = item;
+      const schedule = { date, time, duration };
+      const [res] = await pool.query(
+        'UPDATE classes SET title=?, trainer_id=?, schedule=?, capacity=? WHERE id=?',
+        [title, trainerId || null, JSON.stringify(schedule), capacity, id]
+      );
+      return res.affectedRows > 0;
+    }
+
     await pool.query('UPDATE items SET data = ? WHERE id = ? AND `key` = ?', [JSON.stringify(item), id, key]);
     return true;
   } else {
     const store = readStorage();
-    store[key]=store[key]||[];
-    const idx = store[key].findIndex(i=>String(i.id)===String(id));
-    if (idx===-1) return false;
-    store[key][idx]=Object.assign({ id: Number(id) }, item);
+    store[key] = store[key] || [];
+    const idx = store[key].findIndex(i => String(i.id) === String(id));
+    if (idx === -1) return false;
+    store[key][idx] = Object.assign({ id: Number(id) }, item);
     writeStorage(store);
     return true;
   }
 }
 
-async function deleteItemInStore(key,id) {
+async function deleteItemInStore(key, id) {
   if (pool) {
-    const [result] = await pool.query('DELETE FROM items WHERE id = ? AND `key` = ?', [id, key]);
+    let tableName = 'items';
+    let idCol = 'id'; // default
+    let extraCondition = ' AND `key` = ?';
+    let params = [id, key];
+
+    if (key === 'gym_members') { tableName = 'members'; extraCondition = ''; params = [id]; }
+    else if (key === 'gym_plans') { tableName = 'plans'; extraCondition = ''; params = [id]; }
+    else if (key === 'gym_trainers') { tableName = 'trainers'; extraCondition = ''; params = [id]; }
+    else if (key === 'gym_classes') { tableName = 'classes'; extraCondition = ''; params = [id]; }
+    else if (key === 'gym_prospects') { tableName = 'prospects'; extraCondition = ''; params = [id]; }
+    // generic fallback uses default values above
+
+    const [result] = await pool.query(`DELETE FROM ${tableName} WHERE id = ?${extraCondition}`, params);
     return result.affectedRows;
   } else {
     const store = readStorage();
-    store[key]=store[key]||[];
+    store[key] = store[key] || [];
     const before = store[key].length;
-    store[key]=store[key].filter(i=>String(i.id)!==String(id));
+    store[key] = store[key].filter(i => String(i.id) !== String(id));
     writeStorage(store);
     return before - store[key].length;
   }
@@ -108,7 +255,7 @@ async function replaceItemsInStore(key, items) {
     }
   } else {
     const store = readStorage();
-    store[key]=items.map((it,idx)=> Object.assign({ id: it.id||(idx+1) }, it));
+    store[key] = items.map((it, idx) => Object.assign({ id: it.id || (idx + 1) }, it));
     writeStorage(store);
     return store[key];
   }
@@ -117,17 +264,14 @@ async function replaceItemsInStore(key, items) {
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_USER = process.env.DB_USER || 'root';
 const DB_PASS = process.env.DB_PASS || '';
-const DB_NAME = process.env.DB_NAME || 'HeavyDen';
-const PORT = process.env.PORT || 5000;
-
-let pool;
+const DB_NAME = process.env.DB_NAME || 'gravity-gym';
+const PORT = process.env.PORT || 3000;
 
 function parseJSONSafe(data) {
   if (!data) return {};
   if (typeof data === 'object') return data;
   try { return JSON.parse(data); } catch { return {}; }
 }
-
 
 async function initDb() {
   // create DB if not exists (using connection without database)
@@ -139,7 +283,12 @@ async function initDb() {
     connectionLimit: 2,
     queueLimit: 0
   });
-  await tmpPool.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
+  try {
+    await tmpPool.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
+  } catch (err) {
+    await tmpPool.end();
+    throw new Error('Unable to create or access database: ' + err.message);
+  }
   await tmpPool.end();
 
   pool = mysql.createPool({
@@ -152,11 +301,18 @@ async function initDb() {
     queueLimit: 0
   });
 
+  // Test connection
+  try {
+    await pool.query('SELECT 1');
+  } catch (err) {
+    throw new Error('MySQL connection failed: ' + err.message);
+  }
+
   // Create items table if not exists (legacy)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS items (
       id INT PRIMARY KEY AUTO_INCREMENT,
-      \`key\` VARCHAR(255) NOT NULL,
+      ` + '`key`' + ` VARCHAR(255) NOT NULL,
       data JSON,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -267,64 +423,66 @@ async function initDb() {
     );
   `);
 
-  // Ensure default admin exists in users table (migrate from items if present)
-  try {
-    const [rows] = await pool.query("SELECT id, data FROM items WHERE `key` = ?", ['gym_users']);
-    let found = false;
-    for (const r of rows) {
-      const obj = (typeof r.data === 'object') ? r.data : JSON.parse(r.data || '{}');
-      if (obj && obj.username === 'Tanmay9999') { found = true; break; }
-    }
-    if (!found) {
-      // insert into users table
-      await pool.query('INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)', ['Tanmay9999','admin123','admin','Tanmay','tanmay@example.com']);
-      console.log('Inserted default admin Tanmay9999 into users table');
-    }
-  } catch (e) {
-    console.error('Error ensuring default admin (users):', e);
-  }
 
-  // Migrate existing items rows into relational tables (best-effort)
-  try {
-    const [all] = await pool.query("SELECT id, `key`, data FROM items");
-    for (const r of all) {
-      let obj = (typeof r.data === 'object') ? r.data : JSON.parse(r.data || '{}');
-      const key = r.key || r['key'];
-      if (!key) continue;
-      if (key === 'gym_plans') {
-        // insert if not exists by name
-        await pool.query('INSERT IGNORE INTO plans (name, duration, price, discount, trial, description, features, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-                         [obj.name||'', obj.duration||'', obj.price||0, obj.discount||0, obj.trial||0, obj.description||'', JSON.stringify(obj.features||[])]);
-      } else if (key === 'gym_trainers') {
-        await pool.query('INSERT IGNORE INTO trainers (name, email, phone, specialization, certifications, bio, availability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-                         [obj.name||'', obj.email||'', obj.phone||'', obj.specialization||'', obj.certifications||'', obj.bio||'', JSON.stringify(obj.availability||[])]);
-      } else if (key === 'gym_prospects') {
-        await pool.query('INSERT IGNORE INTO prospects (name, email, phone, notes, created_at) VALUES (?, ?, ?, ?, NOW())',
-                         [obj.name||'', obj.email||'', obj.phone||'', obj.notes||'']);
-      } else if (key === 'gym_users') {
-        // already ensured default admin; consider inserting other users
-        if (obj.username && obj.username !== 'Tanmay9999') {
-          await pool.query('INSERT IGNORE INTO users (username, password, role, name, email, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
-                           [obj.username||'', obj.password||'', obj.role||'', obj.name||'', obj.email||'']);
-        }
-      } else if (key === 'gym_members') {
-        await pool.query('INSERT IGNORE INTO members (name, email, phone, plan_id, joined_at, extra, created_at) VALUES (?, ?, ?, NULL, NOW(), ?, NOW())',
-                         [obj.name||'', obj.email||'', obj.phone||'', JSON.stringify(obj)]);
-      } else if (key === 'gym_classes') {
-        await pool.query('INSERT IGNORE INTO classes (title, trainer_id, schedule, capacity, created_at) VALUES (?, NULL, ?, ?, NOW())',
-                         [obj.title||'', JSON.stringify(obj.schedule||{}), obj.capacity||0]);
-      } else if (key === 'gym_checkins') {
-        // checkins depend on members; skip migration for simplicity
-      } else if (key === 'gym_payments') {
-        // skip migration
-      }
-    }
-    console.log('Migration from items to relational tables attempted');
-  } catch (e) {
-    console.error('Migration error:', e);
-  }
 }
 
+
+// Login endpoint
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, error: 'Username and password required' });
+  }
+
+  try {
+    if (pool) {
+      // Relational DB check
+      const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+      const user = rows[0];
+      if (!user) {
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+
+      let valid = false;
+      if (user.password && user.password.includes(':')) {
+        // Scrypt hash
+        const [salt, key] = user.password.split(':');
+        const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+        if (key === derived) valid = true;
+      } else {
+        // Plain text (legacy/migrated)
+        if (user.password === password) valid = true;
+      }
+
+      if (!valid) {
+        console.log('Login failed: invalid password for', username);
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+
+      const userProfile = Object.assign({}, user);
+      delete userProfile.password;
+      console.log('Login success for', username, 'sending profile:', userProfile);
+      return res.json({ ok: true, user: userProfile });
+
+    } else {
+      // File storage fallback (generic items)
+      // Note: In file storage, passwords might be plain text
+      const store = readStorage();
+      const users = store['gym_users'] || [];
+      const user = users.find(u => u.username === username && u.password === password);
+
+      if (!user) {
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+      const userProfile = Object.assign({}, user);
+      delete userProfile.password;
+      return res.json({ ok: true, user: userProfile });
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
+});
 
 // Get all items for a key
 app.get('/api/:key', async (req, res) => {
@@ -389,7 +547,7 @@ app.put('/api/:key/:id', async (req, res) => {
   const id = req.params.id;
   const item = req.body;
   try {
-    const ok = await updateItemInStore(key,id,item);
+    const ok = await updateItemInStore(key, id, item);
     if (!ok) return res.status(404).json({ ok: false, error: 'Not found' });
     res.json({ ok: true });
   } catch (err) {
@@ -403,7 +561,7 @@ app.delete('/api/:key/:id', async (req, res) => {
   const key = req.params.key;
   const id = req.params.id;
   try {
-    const deleted = await deleteItemInStore(key,id);
+    const deleted = await deleteItemInStore(key, id);
     res.json({ ok: true, deleted });
   } catch (err) {
     console.error(err);
@@ -423,16 +581,110 @@ app.delete('/api/:key/full', async (req, res) => {
   }
 });
 
+// Login endpoint
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, error: 'Username and password required' });
+  }
+
+  try {
+    if (pool) {
+      // Relational DB check
+      const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+      const user = rows[0];
+      if (!user) {
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+
+      let valid = false;
+      if (user.password && user.password.includes(':')) {
+        // Scrypt hash
+        const [salt, key] = user.password.split(':');
+        const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+        if (key === derived) valid = true;
+      } else {
+        // Plain text (legacy/migrated)
+        if (user.password === password) valid = true;
+      }
+
+      if (!valid) {
+        console.log('Login failed: invalid password for', username);
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+
+      const userProfile = Object.assign({}, user);
+      delete userProfile.password;
+      console.log('Login success for', username, 'sending profile:', userProfile);
+      return res.json({ ok: true, user: userProfile });
+
+    } else {
+      // File storage fallback (generic items)
+      // Note: In file storage, passwords might be plain text
+      const store = readStorage();
+      const users = store['gym_users'] || [];
+      const user = users.find(u => u.username === username && u.password === password);
+
+      if (!user) {
+        return res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      }
+      const userProfile = Object.assign({}, user);
+      delete userProfile.password;
+      return res.json({ ok: true, user: userProfile });
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ ok: false, error: 'Internal server error' });
+  }
+});
+
+// Health endpoint
+app.get('/health', async (req, res) => {
+  if (pool) {
+    try {
+      await pool.query('SELECT 1');
+      return res.json({ ok: true, db: 'connected' });
+    } catch (e) {
+      return res.json({ ok: true, db: 'error', error: e.message });
+    }
+  }
+  return res.json({ ok: true, db: 'file-storage' });
+});
+
+// Serve frontend from project root (index.html, css, js)
+const FRONTEND_ROOT = path.join(__dirname, '..');
+app.use(express.static(FRONTEND_ROOT));
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+    return next();
+  }
+  res.sendFile(path.join(FRONTEND_ROOT, 'index.html'));
+});
+
 app.listen(PORT, async () => {
   try {
     await initDb();
-    console.log(`API up on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Frontend: http://localhost:${PORT}`);
+    console.log(`API: http://localhost:${PORT}/api`);
   } catch (err) {
     console.error('Failed to initialize DB, falling back to file storage:', err && err.message ? err.message : err);
     // fallback to file storage so the project can run without MySQL during development
     pool = null;
     useFileStorage = true;
     ensureFileStorage();
-    console.log('File storage enabled. API up on port', PORT);
+    console.log('File storage enabled. Server running on port', PORT);
+  }
+  // perform a quick DB check and print connection status
+  if (pool) {
+    try {
+      await pool.query('SELECT 1');
+      console.log('Connected to MySQL (startup check)');
+    } catch (e) {
+      console.error('Warning: MySQL appears unreachable at startup:', e.message);
+    }
+  } else {
+    console.log('Running with file storage (no DB)');
   }
 });

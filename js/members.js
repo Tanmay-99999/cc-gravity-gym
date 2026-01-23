@@ -1,10 +1,15 @@
 // Member Management
 
-// Load members table
-function loadMembers() {
+// Flag to prevent multiple simultaneous saves
+let _savingMember = false;
+
+// Load members table (now async to fetch fresh data from server)
+async function loadMembers() {
+    // Refresh cache from server before reading
+    await Storage.refresh(Storage.KEYS.MEMBERS);
     const members = Storage.get(Storage.KEYS.MEMBERS) || [];
     const tbody = document.getElementById('membersTableBody');
-    
+
     if (members.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -22,9 +27,9 @@ function loadMembers() {
 
     tbody.innerHTML = members.map(member => {
         const status = getMembershipStatus(member.expiryDate);
-        const statusClass = status === 'active' ? 'status-active' : 
-                           status === 'expired' ? 'status-expired' : 'status-pending';
-        
+        const statusClass = status === 'active' ? 'status-active' :
+            status === 'expired' ? 'status-expired' : 'status-pending';
+
         return `
             <tr>
                 <td>${member.id}</td>
@@ -50,15 +55,15 @@ function filterMembers() {
     const searchTerm = document.getElementById('memberSearch').value.toLowerCase();
     const statusFilter = document.getElementById('memberStatusFilter').value;
     const members = Storage.get(Storage.KEYS.MEMBERS) || [];
-    
+
     const filtered = members.filter(member => {
         const matchesSearch = member.name.toLowerCase().includes(searchTerm) ||
-                            member.email.toLowerCase().includes(searchTerm) ||
-                            member.phone.includes(searchTerm);
-        
+            member.email.toLowerCase().includes(searchTerm) ||
+            member.phone.includes(searchTerm);
+
         const status = getMembershipStatus(member.expiryDate);
         const matchesStatus = !statusFilter || status === statusFilter;
-        
+
         return matchesSearch && matchesStatus;
     });
 
@@ -66,9 +71,9 @@ function filterMembers() {
     const tbody = document.getElementById('membersTableBody');
     tbody.innerHTML = filtered.map(member => {
         const status = getMembershipStatus(member.expiryDate);
-        const statusClass = status === 'active' ? 'status-active' : 
-                           status === 'expired' ? 'status-expired' : 'status-pending';
-        
+        const statusClass = status === 'active' ? 'status-active' :
+            status === 'expired' ? 'status-expired' : 'status-pending';
+
         return `
             <tr>
                 <td>${member.id}</td>
@@ -91,6 +96,9 @@ function filterMembers() {
 
 // Show add member modal
 function showAddMemberModal() {
+    // Reset save guard in case it was stuck
+    _savingMember = false;
+
     // Only the default admin can create members
     if (!isDefaultAdmin()) {
         showNotification('Only the default admin (Tanmay9999) can add members', 'error');
@@ -99,7 +107,7 @@ function showAddMemberModal() {
     // Load plans into select
     const plans = Storage.get(Storage.KEYS.PLANS) || [];
     const planSelect = document.getElementById('memberPlan');
-    planSelect.innerHTML = plans.map(plan => 
+    planSelect.innerHTML = plans.map(plan =>
         `<option value="${plan.id}">${plan.name} - ${formatCurrency(plan.price)}</option>`
     ).join('');
 
@@ -121,12 +129,12 @@ function showAddMemberModal() {
 document.addEventListener('DOMContentLoaded', () => {
     const photoInput = document.getElementById('memberPhoto');
     if (photoInput) {
-        photoInput.addEventListener('change', function(e) {
+        photoInput.addEventListener('change', function (e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById('photoPreview').innerHTML = 
+                reader.onload = function (e) {
+                    document.getElementById('photoPreview').innerHTML =
                         `<img src="${e.target.result}" alt="Preview">`;
                 };
                 reader.readAsDataURL(file);
@@ -152,19 +160,34 @@ function saveMember() {
         return;
     }
 
+    // Prevent duplicate submissions
+    if (_savingMember) {
+        console.log('Save already in progress, ignoring duplicate call');
+        return;
+    }
+    _savingMember = true;
+
     const plans = Storage.get(Storage.KEYS.PLANS) || [];
-    const selectedPlan = plans.find(p => p.id === planId);
+    const selectedPlan = plans.find(p => String(p.id) === String(planId));
 
     if (!selectedPlan) {
+        _savingMember = false; // Reset flag before return
         showNotification('Invalid plan selected', 'error');
         return;
+    }
+
+    // Disable button to prevent double-submit
+    const saveBtn = document.querySelector('[data-action="saveMember"]') || document.getElementById('saveMemberBtn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
     }
 
     // Calculate dates
     const startDate = new Date();
     let expiryDate = new Date();
-    
-    switch(selectedPlan.duration) {
+
+    switch (selectedPlan.duration) {
         case 'monthly':
             expiryDate.setMonth(expiryDate.getMonth() + 1);
             break;
@@ -180,7 +203,7 @@ function saveMember() {
     let photoData = null;
     if (photoInput.files && photoInput.files[0]) {
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             photoData = e.target.result;
             completeSaveMember();
         };
@@ -209,20 +232,34 @@ function saveMember() {
 
         // Create member on server (no local cache). Await created item to get server-assigned id
         Storage.create(Storage.KEYS.MEMBERS, member).then(created => {
+            _savingMember = false; // Reset flag
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save & Process Payment';
+            }
             closeModal('addMemberModal');
             if (created) {
+                if (typeof loadMembers === 'function') loadMembers(); // Force refresh
                 showPaymentModal(created, selectedPlan);
             } else {
                 showPaymentModal(member, selectedPlan);
             }
+        }).catch(err => {
+            _savingMember = false; // Reset flag on error too
+            console.error('Save member failed', err);
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save & Process Payment';
+            }
         });
-        }
+    }
 }
 
 // View member details
 function viewMemberDetails(memberId) {
     const members = Storage.get(Storage.KEYS.MEMBERS) || [];
-    const member = members.find(m => m.id === memberId);
+    // Fix: strict comparison failure by converting both to string
+    const member = members.find(m => String(m.id) === String(memberId));
 
     if (!member) {
         showNotification('Member not found', 'error');
@@ -245,9 +282,9 @@ function viewMemberDetails(memberId) {
     const status = getMembershipStatus(member.expiryDate);
     const statusBadge = document.getElementById('detailStatus');
     statusBadge.textContent = status;
-    statusBadge.className = 'status-badge ' + 
-        (status === 'active' ? 'status-active' : 
-         status === 'expired' ? 'status-expired' : 'status-pending');
+    statusBadge.className = 'status-badge ' +
+        (status === 'active' ? 'status-active' :
+            status === 'expired' ? 'status-expired' : 'status-pending');
 
     // Set photo
     const photoEl = document.getElementById('detailPhoto');
@@ -258,11 +295,11 @@ function viewMemberDetails(memberId) {
         photoEl.style.display = 'none';
     }
 
-    // Generate QR Code
+    // Generate QR Code - ensure text is string
     const qrContainer = document.getElementById('detailQRCode');
     qrContainer.innerHTML = '';
     new QRCode(qrContainer, {
-        text: member.id,
+        text: String(member.id),
         width: 150,
         height: 150
     });
@@ -279,7 +316,7 @@ function loadPaymentHistory(memberId) {
     const memberPayments = payments.filter(p => p.memberId === memberId);
 
     const tbody = document.getElementById('paymentHistoryBody');
-    
+
     if (memberPayments.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="text-center">No payment history</td></tr>';
         return;
@@ -302,15 +339,15 @@ function deleteMember(memberId) {
         return;
     }
 
-        // delete on server
+    // delete on server
     Storage.delete(Storage.KEYS.MEMBERS, memberId).then(ok => {
         if (ok) {
-    if (typeof loadMembers === 'function') { loadMembers(); }
+            if (typeof loadMembers === 'function') { loadMembers(); }
             showNotification('Deleted successfully', 'success');
         } else {
             showNotification('Deletion failed', 'error');
         }
-    });loadMembers();
+    }); loadMembers();
     showNotification('Member deleted successfully', 'success');
 }
 

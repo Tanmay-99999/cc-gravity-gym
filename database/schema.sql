@@ -1,6 +1,6 @@
--- Schema for HeavyDen (relational tables)
-CREATE DATABASE IF NOT EXISTS `HeavyDen`;
-USE `HeavyDen`;
+-- Schema for Gravity Gym
+CREATE DATABASE IF NOT EXISTS `gravity-gym`;
+USE `gravity-gym`;
 
 CREATE TABLE IF NOT EXISTS users (
   id INT PRIMARY KEY AUTO_INCREMENT,

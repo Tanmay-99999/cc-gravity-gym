@@ -1,7 +1,11 @@
 // Prospects Management
 
-// Load prospects
-function loadProspects() {
+// Flag to prevent duplicate saves
+let _savingProspect = false;
+
+// Load prospects (async to fetch fresh data)
+async function loadProspects() {
+    await Storage.refresh(Storage.KEYS.PROSPECTS);
     const prospects = Storage.get(Storage.KEYS.PROSPECTS) || [];
     const tbody = document.getElementById('prospectsTableBody');
 
@@ -21,10 +25,10 @@ function loadProspects() {
     }
 
     tbody.innerHTML = prospects.map(prospect => {
-        const statusClass = 
+        const statusClass =
             prospect.status === 'contacted' ? 'status-contacted' :
-            prospect.status === 'converted' ? 'status-converted' :
-            prospect.status === 'lost' ? 'status-lost' : 'status-pending';
+                prospect.status === 'converted' ? 'status-converted' :
+                    prospect.status === 'lost' ? 'status-lost' : 'status-pending';
 
         return `
             <tr>
@@ -48,6 +52,9 @@ function loadProspects() {
 
 // Show add prospect modal
 function showAddProspectModal() {
+    // Reset save guard in case it was stuck
+    _savingProspect = false;
+
     // Clear form
     document.getElementById('prospectName').value = '';
     document.getElementById('prospectPhone').value = '';
@@ -75,6 +82,13 @@ function saveProspect() {
         showNotification('Please fill in all required fields', 'error');
         return;
     }
+
+    // Prevent duplicate saves
+    if (_savingProspect) {
+        console.log('Prospect save in progress, ignoring');
+        return;
+    }
+    _savingProspect = true;
 
     const prospects = Storage.get(Storage.KEYS.PROSPECTS) || [];
     const editId = document.getElementById('addProspectModal').getAttribute('data-edit-id');
@@ -108,9 +122,21 @@ function saveProspect() {
         };
         // create prospect on server
         Storage.create(Storage.KEYS.PROSPECTS, prospect).then(created => {
-            if (!created) showNotification('Failed to add prospect', 'error');
+            _savingProspect = false;
+            if (created) {
+                closeModal('addProspectModal');
+                loadProspects();
+                showNotification('Prospect added successfully', 'success');
+            } else {
+                showNotification('Failed to add prospect', 'error');
+            }
+        }).catch(err => {
+            _savingProspect = false;
+            console.error('Save prospect failed', err);
         });
+        return; // Exit early
     }
+    _savingProspect = false;
     closeModal('addProspectModal');
     loadProspects();
     showNotification(editId ? 'Prospect updated successfully' : 'Prospect added successfully', 'success');
@@ -160,14 +186,14 @@ function deleteProspect(prospectId) {
         return;
     }
 
-        // delete on server
+    // delete on server
     Storage.delete(Storage.KEYS.PROSPECTS, prospectId).then(ok => {
         if (ok) {
-    if (typeof loadProspects === 'function') { loadProspects(); }
+            if (typeof loadProspects === 'function') { loadProspects(); }
             showNotification('Deleted successfully', 'success');
         } else {
             showNotification('Deletion failed', 'error');
         }
-    });loadProspects();
+    }); loadProspects();
     showNotification('Prospect deleted successfully', 'success');
 }

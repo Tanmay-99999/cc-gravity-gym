@@ -1,5 +1,8 @@
 // Plans Management
 
+// Flag to prevent duplicate saves
+let _savingPlan = false;
+
 // Load plans
 async function loadPlans() {
     const key = Storage.KEYS.PLANS;
@@ -72,13 +75,16 @@ async function loadPlans() {
 
 // Show add plan modal
 function showAddPlanModal() {
+    // Reset save guard in case it was stuck
+    _savingPlan = false;
+
     if (!isDefaultAdmin()) {
         showNotification('Only the default admin (Tanmay9999) can create plans', 'error');
         return;
     }
     const titleEl = document.getElementById('planModalTitle');
     if (titleEl) titleEl.textContent = 'Create Membership Plan';
-    
+
     if (document.getElementById('planName')) document.getElementById('planName').value = '';
     if (document.getElementById('planDuration')) document.getElementById('planDuration').value = 'monthly';
     if (document.getElementById('planPrice')) document.getElementById('planPrice').value = '';
@@ -117,6 +123,13 @@ function savePlan() {
         return;
     }
 
+    // Prevent duplicate saves
+    if (_savingPlan) {
+        console.log('Plan save in progress, ignoring');
+        return;
+    }
+    _savingPlan = true;
+
     const addModalEl = document.getElementById('addPlanModal');
     const editId = addModalEl ? addModalEl.getAttribute('data-edit-id') : null;
 
@@ -133,10 +146,12 @@ function savePlan() {
     } else {
         const plan = { name, duration, price, discount, trial, description, features, createdAt: new Date().toISOString() };
         Storage.create(Storage.KEYS.PLANS, plan).then(created => {
+            _savingPlan = false;
             closeModal('addPlanModal');
             loadPlans();
             showNotification('Plan created successfully', 'success');
         }).catch(err => {
+            _savingPlan = false;
             console.error('Failed to create plan:', err);
             showNotification('Failed to create plan', 'error');
         });
@@ -161,7 +176,7 @@ function editPlan(planId) {
     if (document.getElementById('planDiscount')) document.getElementById('planDiscount').value = plan.discount || 0;
     if (document.getElementById('planTrial')) document.getElementById('planTrial').value = plan.trial || 0;
     if (document.getElementById('planDescription')) document.getElementById('planDescription').value = plan.description || '';
-    
+
     const features = Array.isArray(plan.features) ? plan.features.join('\n') : (plan.features || '');
     if (document.getElementById('planFeatures')) document.getElementById('planFeatures').value = features;
 
@@ -193,5 +208,5 @@ function deletePlan(planId) {
 /* Small helper to escape HTML when rendering user-supplied strings, reduces XSS risk */
 function escapeHtml(str) {
     if (str === undefined || str === null) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

@@ -35,7 +35,7 @@ const navigationByRole = {
 };
 
 // Login function
-function login() {
+async function login() {
     const roleSelect = document.getElementById('roleSelect').value;
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
@@ -45,34 +45,58 @@ function login() {
         return;
     }
 
-    const users = Storage.get(Storage.KEYS.USERS) || [];
-    const user = users.find(u => u.username === username && u.password === password);
+    try {
+        const loadingBtn = document.getElementById('loginBtn');
+        const originalText = loadingBtn.innerText;
+        loadingBtn.innerText = 'Logging in...';
+        loadingBtn.disabled = true;
 
-    if (!user) {
-        showNotification('Invalid username or password', 'error');
-        return;
+        const res = await fetch(`${window.__API_BASE__}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        console.log('Login response data:', data);
+
+        loadingBtn.innerText = originalText;
+        loadingBtn.disabled = false;
+
+        if (!data.ok) {
+            showNotification(data.error || 'Invalid username or password', 'error');
+            return;
+        }
+
+        const user = data.user;
+
+        if (user.role.toLowerCase() !== roleSelect.toLowerCase()) {
+            showNotification('Selected role does not match user role', 'error');
+            return;
+        }
+
+        // set current user
+        currentUser = user;
+        window.__CURRENT_USER__ = currentUser;
+
+        // Hide login screen, show main app
+        document.getElementById('loginScreen').classList.remove('active');
+        document.getElementById('mainApp').classList.add('active');
+
+        // Initialize app
+        initializeApp();
+
+        showNotification(`Welcome back, ${currentUser.name || currentUser.username}!`, 'success');
+
+    } catch (err) {
+        console.error('Login error', err);
+        showNotification('Connection error during login', 'error');
+        const loadingBtn = document.getElementById('loginBtn');
+        if (loadingBtn) {
+            loadingBtn.innerText = 'Login';
+            loadingBtn.disabled = false;
+        }
     }
-
-    if (user.role !== roleSelect) {
-        showNotification('Selected role does not match user role', 'error');
-        return;
-    }
-
-    // set current user (omit password)
-    currentUser = Object.assign({}, user);
-    delete currentUser.password;
-
-    // store current user in-memory for this session
-    window.__CURRENT_USER__ = currentUser;
-
-    // Hide login screen, show main app
-    document.getElementById('loginScreen').classList.remove('active');
-    document.getElementById('mainApp').classList.add('active');
-
-    // Initialize app
-    initializeApp();
-
-    showNotification(`Welcome back, ${currentUser.name || currentUser.username}!`, 'success');
 }
 
 // Logout function
@@ -112,7 +136,7 @@ function checkAuth() {
     // If Storage has a users array and contains a single default admin, auto-login is optional
     try {
         const users = Storage.get && Storage.get(Storage.KEYS.USERS);
-        if (Array.isArray(users) && users.length===1 && _safeHasUsername(users[0])) {
+        if (Array.isArray(users) && users.length === 1 && _safeHasUsername(users[0])) {
             currentUser = Object.assign({}, users[0]);
             delete currentUser.password;
             window.__CURRENT_USER__ = currentUser;
@@ -121,7 +145,7 @@ function checkAuth() {
             initializeApp();
             return;
         }
-    } catch(e) { /* ignore */ }
+    } catch (e) { /* ignore */ }
 
     // Otherwise remain on login screen (no-op)
 }
