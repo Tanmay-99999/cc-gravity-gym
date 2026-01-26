@@ -1,9 +1,6 @@
 // Bootstrap loader: fetch collections from backend API and populate an in-memory cache
 // This file uses top-level await; include as <script type="module"> before other scripts.
-const API_BASE =
-  window.location.protocol === "https:"
-    ? "http://51.20.141.163:5000/api"
-    : "http://51.20.141.163:5000/api";
+const API_BASE = "/api";
 
 const KEYS = ['gym_users', 'gym_plans', 'gym_trainers', 'gym_members', 'gym_payments', 'gym_checkins', 'gym_prospects', 'gym_bookings'];
 

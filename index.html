@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/responsive.css">
 </head>
+
 <body>
     <!-- Login Screen -->
     <div id="loginScreen" class="screen active">
@@ -34,7 +36,8 @@
                     <input type="password" id="password" class="form-control" placeholder="Enter password">
                 </div>
                 <button id="loginBtn" data-action="login" class="btn btn-primary btn-block">Login</button>
-                <p class="login-hint">Demo credentials — Admin: <strong>Tanmay9999</strong> / <strong>admin123</strong></p>
+                <p class="login-hint">Demo credentials — Admin: <strong>Tanmay9999</strong> / <strong>admin123</strong>
+                </p>
             </div>
         </div>
     </div>
@@ -123,7 +126,8 @@
                     <button data-action="showAddMemberModal" class="btn btn-primary">+ Add Member</button>
                 </div>
                 <div class="table-controls">
-                    <input type="text" id="memberSearch" class="form-control" placeholder="Search members..." onkeyup="filterMembers()">
+                    <input type="text" id="memberSearch" class="form-control" placeholder="Search members..."
+                        onkeyup="filterMembers()">
                     <select id="memberStatusFilter" class="form-control" onchange="filterMembers()">
                         <option value="">All Status</option>
                         <option value="active">Active</option>
@@ -180,7 +184,8 @@
                     <h2>Check-In Panel</h2>
                 </div>
                 <div class="checkin-search glass-card">
-                    <input type="text" id="checkinSearch" class="form-control" placeholder="Search by name, ID, or phone..." onkeyup="searchMemberForCheckin()">
+                    <input type="text" id="checkinSearch" class="form-control"
+                        placeholder="Search by name, ID, or phone..." onkeyup="searchMemberForCheckin()">
                     <div id="checkinResults" class="checkin-results"></div>
                 </div>
                 <div class="recent-checkins glass-card">
@@ -494,7 +499,8 @@
                 </div>
                 <div class="form-group">
                     <label>Features (one per line)</label>
-                    <textarea id="planFeatures" class="form-control" rows="4" placeholder="Unlimited gym access&#10;Personal training sessions&#10;Nutrition consultation"></textarea>
+                    <textarea id="planFeatures" class="form-control" rows="4"
+                        placeholder="Unlimited gym access&#10;Personal training sessions&#10;Nutrition consultation"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
@@ -578,7 +584,8 @@
                 </div>
                 <div class="form-group">
                     <label>Specialization</label>
-                    <input type="text" id="trainerSpecialization" class="form-control" placeholder="e.g., Yoga, CrossFit, Personal Training">
+                    <input type="text" id="trainerSpecialization" class="form-control"
+                        placeholder="e.g., Yoga, CrossFit, Personal Training">
                 </div>
                 <div class="form-group">
                     <label>Certifications</label>
@@ -675,4 +682,5 @@
     <script src="js/dashboard.js"></script>
     <script src="js/app.js"></script>
 </body>
+
 </html>
