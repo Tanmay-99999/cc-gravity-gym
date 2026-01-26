@@ -423,7 +423,15 @@ async function initDb() {
     );
   `);
 
-
+  // Seed default admin if empty
+  const [userRows] = await pool.query('SELECT count(*) as count FROM users');
+  if (userRows[0].count === 0) {
+    console.log('Seeding default admin user...');
+    await pool.query(
+      'INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)',
+      ['Tanmay9999', 'admin123', 'admin', 'Tanmay', 'tanmay@example.com']
+    );
+  }
 }
 
 
