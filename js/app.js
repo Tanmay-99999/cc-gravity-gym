@@ -2,10 +2,10 @@
 let currentView = 'dashboard';
 
 // Initialize app
-function initializeApp() {
+function initializeApp(startView = 'dashboard') {
     buildNavigation && buildNavigation();
     updateCurrentDate();
-    navigateTo('dashboard');
+    navigateTo(startView);
 
     // Wire UI buttons and handlers (CSP-safe: no inline handlers required)
     wireUiButtons();
@@ -60,6 +60,8 @@ function navigateTo(viewId) {
 function loadViewData(viewId) {
     switch (viewId) {
         case 'dashboard':
+        case 'trainerDashboard':
+        case 'memberDashboard':
             typeof loadDashboard === 'function' && loadDashboard();
             break;
         case 'members':

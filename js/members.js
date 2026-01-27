@@ -240,9 +240,12 @@ function saveMember() {
             closeModal('addMemberModal');
             if (created) {
                 if (typeof loadMembers === 'function') loadMembers(); // Force refresh
+                const msg = `Member added successfully!\nUsername: ${created.email}\nPassword: ${created.generatedPassword || 'Check console'}`;
+                showNotification(msg, 'success');
                 showPaymentModal(created, selectedPlan);
             } else {
-                showPaymentModal(member, selectedPlan);
+                console.error('Failed to create member on server');
+                showNotification('Failed to create member on server. Please check connection and try again.', 'error');
             }
         }).catch(err => {
             _savingMember = false; // Reset flag on error too
@@ -308,6 +311,18 @@ function viewMemberDetails(memberId) {
     loadPaymentHistory(memberId);
 
     showModal('memberDetailsModal');
+}
+
+// Function to add member from prospect
+function convertProspectToMember(prospectId) {
+    const prospects = Storage.get(Storage.KEYS.PROSPECTS) || [];
+    const prospect = prospects.find(p => String(p.id) === String(prospectId));
+    if (prospect) {
+        showAddMemberModal();
+        document.getElementById('memberName').value = prospect.name;
+        document.getElementById('memberEmail').value = prospect.email || '';
+        document.getElementById('memberPhone').value = prospect.phone;
+    }
 }
 
 // Load payment history

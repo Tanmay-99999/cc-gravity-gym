@@ -19,7 +19,7 @@ function showPaymentModal(member, plan) {
     document.getElementById('paymentPlanName').textContent = plan.name;
     document.getElementById('paymentDuration').textContent = getDurationLabel(plan.duration);
     document.getElementById('paymentBaseAmount').textContent = formatCurrency(baseAmount);
-    document.getElementById('paymentDiscount').textContent = discount > 0 ? 
+    document.getElementById('paymentDiscount').textContent = discount > 0 ?
         `${discount}% (${formatCurrency(discountAmount)})` : 'None';
     document.getElementById('paymentTotal').textContent = formatCurrency(totalAmount);
 
@@ -42,8 +42,9 @@ function getDurationLabel(duration) {
 
 // Confirm payment
 function confirmPayment() {
+    console.log('Confirming payment:', { currentPaymentMember, currentPaymentPlan });
     if (!currentPaymentMember || !currentPaymentPlan) {
-        showNotification('Payment information missing', 'error');
+        showNotification('Payment information missing. Please re-open the payment modal.', 'error');
         return;
     }
 
@@ -73,18 +74,28 @@ function confirmPayment() {
     };
 
     // Save payment
-    // Create PAYMENTS on server
-        Storage.create(Storage.KEYS.PAYMENTS, payment).then(created => { if(!created) console.warn('Create failed for PAYMENTS'); });
+    Storage.create(Storage.KEYS.PAYMENTS, payment).then(created => {
+        if (!created) {
+            console.error('Failed to save payment to server');
+            showNotification('Failed to record payment on server. Please check connection.', 'error');
+        } else {
+            console.log('Payment saved:', created);
+            showNotification('Payment processed and recorded successfully!', 'success');
+            // Refresh dashboard if active
+            if (typeof loadDashboard === 'function') loadDashboard();
+        }
+    });
 
     closeModal('paymentModal');
-    showNotification('Payment processed successfully!', 'success');
 
     // Reload members table
-    loadMembers();
+    if (typeof loadMembers === 'function') loadMembers();
 
-    // Reset current payment data
-    currentPaymentMember = null;
-    currentPaymentPlan = null;
+    // Reset current payment data after a short delay to ensure UI updates use it if needed
+    setTimeout(() => {
+        currentPaymentMember = null;
+        currentPaymentPlan = null;
+    }, 500);
 }
 
 // Get total revenue
@@ -103,8 +114,8 @@ function getMonthRevenue() {
     return payments
         .filter(payment => {
             const paymentDate = new Date(payment.date);
-            return paymentDate.getMonth() === currentMonth && 
-                   paymentDate.getFullYear() === currentYear;
+            return paymentDate.getMonth() === currentMonth &&
+                paymentDate.getFullYear() === currentYear;
         })
         .reduce((sum, payment) => sum + payment.amount, 0);
 }

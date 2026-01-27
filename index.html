@@ -36,8 +36,6 @@
                     <input type="password" id="password" class="form-control" placeholder="Enter password">
                 </div>
                 <button id="loginBtn" data-action="login" class="btn btn-primary btn-block">Login</button>
-                <p class="login-hint">Demo credentials — Admin: <strong>Tanmay9999</strong> / <strong>admin123</strong>
-                </p>
             </div>
         </div>
     </div>
@@ -119,7 +117,60 @@
                 </div>
             </div>
 
-            <!-- Members View -->
+            <!-- Trainer Dashboard -->
+            <div id="trainerDashboardView" class="view">
+                <div class="view-header">
+                    <h2>Trainer Dashboard</h2>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="trainerClassesToday">0</div>
+                            <div class="stat-label">Classes Today</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-card glass-card">
+                        <h3>My Schedule</h3>
+                        <div id="trainerScheduleList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Member Dashboard -->
+            <div id="memberDashboardView" class="view">
+                <div class="view-header">
+                    <h2>My Membership</h2>
+                </div>
+                <div class="dashboard-grid">
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">💳</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="memberPlanStatus">Active</div>
+                            <div class="stat-label" id="memberPlanName">Gold Plan</div>
+                        </div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="memberExpiryDays">0</div>
+                            <div class="stat-label">Days Left</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-card glass-card">
+                        <h3>Recent Attendance</h3>
+                        <div id="memberAttendanceList"></div>
+                    </div>
+                    <div class="chart-card glass-card">
+                        <h3>Payment History</h3>
+                        <div id="memberPaymentList"></div>
+                    </div>
+                </div>
+            </div>
             <div id="membersView" class="view">
                 <div class="view-header">
                     <h2>Member Management</h2>

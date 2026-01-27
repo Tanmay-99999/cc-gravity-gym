@@ -145,7 +145,7 @@ function saveProspect() {
 // Update prospect status
 function updateProspectStatus(prospectId) {
     const prospects = Storage.get(Storage.KEYS.PROSPECTS) || [];
-    const prospect = prospects.find(p => p.id === prospectId);
+    const prospect = prospects.find(p => String(p.id) === String(prospectId));
 
     if (!prospect) {
         showNotification('Prospect not found', 'error');
@@ -158,10 +158,22 @@ function updateProspectStatus(prospectId) {
     );
 
     if (newStatus && ['pending', 'contacted', 'converted', 'lost'].includes(newStatus.toLowerCase())) {
-        prospect.status = newStatus.toLowerCase();
-        Storage.set(Storage.KEYS.PROSPECTS, prospects);
-        loadProspects();
-        showNotification('Status updated successfully', 'success');
+        const updatedProspect = { ...prospect, status: newStatus.toLowerCase() };
+        Storage.update(Storage.KEYS.PROSPECTS, prospect.id, updatedProspect).then(ok => {
+            if (ok) {
+                loadProspects();
+                showNotification('Status updated successfully', 'success');
+                if (newStatus.toLowerCase() === 'converted') {
+                    if (confirm('Prospect converted! Would you like to add them as a member now?')) {
+                        if (typeof convertProspectToMember === 'function') {
+                            convertProspectToMember(prospect.id);
+                        }
+                    }
+                }
+            } else {
+                showNotification('Failed to update status', 'error');
+            }
+        });
     } else if (newStatus !== null) {
         showNotification('Invalid status', 'error');
     }

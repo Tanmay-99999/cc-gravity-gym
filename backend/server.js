@@ -98,18 +98,45 @@ async function getItemsFromStore(key) {
 async function createItemInStore(key, item) {
   if (pool) {
     if (key === 'gym_members') {
-      const planId = item.planId || null;
-      // Extract main fields, put rest in extra
-      const { name, email, phone, startDate, ...rest } = item;
-      // We explicitly map item.startDate -> joined_at and ensure it is YYYY-MM-DD
-      const joinedAt = startDate ? new Date(startDate).toISOString().slice(0, 10) : null;
-      const extra = JSON.stringify(rest);
-      console.log('Creating member:', name, joinedAt); // Debug log
-      const [res] = await pool.query(
-        'INSERT INTO members (name, email, phone, plan_id, joined_at, extra, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-        [name, email, phone, planId, joinedAt, extra]
-      );
-      return Object.assign({}, item, { id: res.insertId });
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        const planId = item.planId || null;
+        const { name, email, phone, startDate, ...rest } = item;
+        const joinedAt = startDate ? new Date(startDate).toISOString().slice(0, 10) : null;
+        const extra = JSON.stringify(rest);
+
+        // Check if user already exists
+        const [existing] = await conn.query('SELECT id FROM users WHERE username = ?', [email]);
+
+        const [res] = await conn.query(
+          'INSERT INTO members (name, email, phone, plan_id, joined_at, extra, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+          [name, email, phone, planId, joinedAt, extra]
+        );
+
+        let password = null;
+        if (existing.length === 0) {
+          const randomPart = Math.floor(1000 + Math.random() * 9000);
+          password = `${name.split(' ')[0]}@${randomPart}`;
+          await conn.query(
+            'INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)',
+            [email, password, 'member', name, email]
+          );
+        } else {
+          // Update role if user exists? Or just keep as is? 
+          // For now, let's just ensure they have the member role if they don't have a more powerful one
+          await conn.query('UPDATE users SET role = IF(role = "admin", "admin", "member") WHERE username = ?', [email]);
+        }
+
+        await conn.commit();
+        return Object.assign({}, item, { id: res.insertId, generatedPassword: password });
+      } catch (err) {
+        await conn.rollback();
+        console.error('Member creation transaction failed:', err);
+        throw err;
+      } finally {
+        conn.release();
+      }
     } else if (key === 'gym_plans') {
       const { name, duration, price, discount, trial, description, features } = item;
       const [res] = await pool.query(
@@ -118,12 +145,40 @@ async function createItemInStore(key, item) {
       );
       return Object.assign({}, item, { id: res.insertId });
     } else if (key === 'gym_trainers') {
-      const { name, email, phone, specialization, certifications, bio, availability } = item;
-      const [res] = await pool.query(
-        'INSERT INTO trainers (name, email, phone, specialization, certifications, bio, availability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
-        [name, email, phone, specialization, certifications, bio, JSON.stringify(availability)]
-      );
-      return Object.assign({}, item, { id: res.insertId });
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        const { name, email, phone, specialization, certifications, bio, availability } = item;
+
+        // Check if user already exists
+        const [existing] = await conn.query('SELECT id FROM users WHERE username = ?', [email]);
+
+        const [res] = await conn.query(
+          'INSERT INTO trainers (name, email, phone, specialization, certifications, bio, availability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+          [name, email, phone, specialization, certifications, bio, JSON.stringify(availability)]
+        );
+
+        let password = null;
+        if (existing.length === 0) {
+          const randomPart = Math.floor(1000 + Math.random() * 9000);
+          password = `${name.split(' ')[0]}@${randomPart}`;
+          await conn.query(
+            'INSERT INTO users (username, password, role, name, email) VALUES (?, ?, ?, ?, ?)',
+            [email, password, 'trainer', name, email]
+          );
+        } else {
+          await conn.query('UPDATE users SET role = IF(role = "admin", "admin", "trainer") WHERE username = ?', [email]);
+        }
+
+        await conn.commit();
+        return Object.assign({}, item, { id: res.insertId, generatedPassword: password });
+      } catch (err) {
+        await conn.rollback();
+        console.error('Trainer creation transaction failed:', err);
+        throw err;
+      } finally {
+        conn.release();
+      }
     } else if (key === 'gym_classes') {
       const { title, trainerId, date, time, duration, capacity, description, trainerName } = item;
       // Store date, time, duration in schedule JSON column
@@ -136,10 +191,24 @@ async function createItemInStore(key, item) {
       );
       return Object.assign({}, item, { id: res.insertId });
     } else if (key === 'gym_prospects') {
-      const { name, email, phone, notes } = item;
+      const { name, email, phone, notes, status, interest, followupDate } = item;
       const [res] = await pool.query(
-        'INSERT INTO prospects (name, email, phone, notes, created_at) VALUES (?, ?, ?, ?, NOW())',
-        [name, email, phone, notes]
+        'INSERT INTO prospects (name, email, phone, notes, status, interest, followup_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())',
+        [name, email, phone, notes, status || 'pending', interest, followupDate]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    } else if (key === 'gym_payments') {
+      const { memberId, planName, amount, method, notes, date } = item;
+      const [res] = await pool.query(
+        'INSERT INTO payments (member_id, plan_name, amount, method, notes, paid_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [memberId, planName, amount, method, notes, date ? new Date(date) : new Date()]
+      );
+      return Object.assign({}, item, { id: res.insertId });
+    } else if (key === 'gym_checkins') {
+      const { memberId, notes, checkinTime } = item;
+      const [res] = await pool.query(
+        'INSERT INTO checkins (member_id, notes, checkin_time) VALUES (?, ?, ?)',
+        [memberId, notes, checkinTime ? new Date(checkinTime) : new Date()]
       );
       return Object.assign({}, item, { id: res.insertId });
     }
@@ -190,6 +259,13 @@ async function updateItemInStore(key, id, item) {
       const [res] = await pool.query(
         'UPDATE classes SET title=?, trainer_id=?, schedule=?, capacity=? WHERE id=?',
         [title, trainerId || null, JSON.stringify(schedule), capacity, id]
+      );
+      return res.affectedRows > 0;
+    } else if (key === 'gym_prospects') {
+      const { name, email, phone, notes, status, interest, followupDate } = item;
+      const [res] = await pool.query(
+        'UPDATE prospects SET name=?, email=?, phone=?, notes=?, status=?, interest=?, followup_date=? WHERE id=?',
+        [name, email, phone, notes, status, interest, followupDate, id]
       );
       return res.affectedRows > 0;
     }
@@ -404,6 +480,7 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS payments (
       id INT PRIMARY KEY AUTO_INCREMENT,
       member_id INT,
+      plan_name VARCHAR(255),
       amount DECIMAL(12,2),
       paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       method VARCHAR(100),
@@ -411,6 +488,10 @@ async function initDb() {
       FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
     );
   `);
+  // Ensure plan_name column exists for existing tables
+  try {
+    await pool.query('ALTER TABLE payments ADD COLUMN plan_name VARCHAR(255) AFTER member_id');
+  } catch (e) { /* ignore if already exists */ }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS prospects (
@@ -419,6 +500,9 @@ async function initDb() {
       email VARCHAR(255),
       phone VARCHAR(50),
       notes TEXT,
+      status VARCHAR(50) DEFAULT 'pending',
+      interest VARCHAR(255),
+      followup_date DATE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -496,6 +580,15 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/:key', async (req, res) => {
   const key = req.params.key;
   try {
+    if (pool) {
+      if (key === 'gym_payments') {
+        const [rows] = await pool.query('SELECT * FROM payments ORDER BY paid_at DESC');
+        return res.json({ ok: true, items: rows.map(r => Object.assign({}, r, { date: r.paid_at, planName: r.plan_name })) });
+      } else if (key === 'gym_checkins') {
+        const [rows] = await pool.query('SELECT * FROM checkins ORDER BY checkin_time DESC');
+        return res.json({ ok: true, items: rows.map(r => Object.assign({}, r, { date: r.checkin_time })) });
+      }
+    }
     const items = await getItemsFromStore(key);
     res.json({ ok: true, items });
   } catch (err) {

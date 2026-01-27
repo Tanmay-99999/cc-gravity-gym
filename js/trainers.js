@@ -64,9 +64,9 @@ function showAddTrainerModal() {
     // Reset save guard in case it was stuck
     _savingTrainer = false;
 
-    // Only the default admin can create trainers
-    if (!isDefaultAdmin()) {
-        showNotification('Only the default admin (Tanmay9999) can add trainers', 'error');
+    // Simplified permission check - any admin can add trainers
+    if (!hasPermission('all')) {
+        showNotification('Only admins can add trainers', 'error');
         return;
     }
     // Clear form
@@ -153,7 +153,8 @@ function saveTrainer() {
             } else {
                 closeModal('addTrainerModal');
                 loadTrainers();
-                showNotification('Trainer added successfully', 'success');
+                const msg = `Trainer added successfully!\nUsername: ${created.email}\nPassword: ${created.generatedPassword || 'Check console'}`;
+                showNotification(msg, 'success');
             }
         }).catch(err => {
             _savingTrainer = false;

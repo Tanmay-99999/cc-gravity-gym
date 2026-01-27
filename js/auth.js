@@ -22,13 +22,13 @@ const navigationByRole = {
         { id: 'prospects', icon: '🎯', label: 'Prospects' }
     ],
     trainer: [
-        { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+        { id: 'trainerDashboard', icon: '📊', label: 'Dashboard' },
         { id: 'classes', icon: '📅', label: 'My Classes' },
         { id: 'members', icon: '👥', label: 'Members' },
         { id: 'checkin', icon: '✅', label: 'Check-in' }
     ],
     member: [
-        { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+        { id: 'memberDashboard', icon: '📊', label: 'My Dashboard' },
         { id: 'classes', icon: '📅', label: 'Classes' },
         { id: 'trainers', icon: '💪', label: 'Trainers' }
     ]
@@ -84,7 +84,9 @@ async function login() {
         document.getElementById('mainApp').classList.add('active');
 
         // Initialize app
-        initializeApp();
+        const startView = user.role === 'admin' ? 'dashboard' :
+            user.role === 'trainer' ? 'trainerDashboard' : 'memberDashboard';
+        initializeApp(startView);
 
         showNotification(`Welcome back, ${currentUser.name || currentUser.username}!`, 'success');
 
